@@ -1,3 +1,25 @@
+### MILESTONE 2026-10-22 23:10 — the sweet shim boots on cas
+
+`fastboot boot shim-cas.img` (sweet shim built unchanged, only the cas live FDT at
+`dtb/boot_unpacked/dtb`) shows the shim console on the phone panel. Observed on screen
+(photo): `SHIM sweet milestone 4: xnu loader`, `INITRD lo=AFFFE000 hi=AFFFE05E`,
+`LOADER no SWEETXNU payload` (expected: no kernel in the ramdisk), and the **UFS probe**:
+
+- `UFS ver=00000300 cap=1587031F hce=00000001 hcs=000010F`, `utrlba=9B14B000`
+- GPT read (`entries=0x40`), partitions found: persist/persistbak/logdump/rawdump/
+  minidump/recovery/cache/exaid/cust/super/userdata(f2fs)/**esp (0x832 MiB)**/**win (0x2C208 MiB)**
+- ends with `UFS probe done, reset in ~3 min`
+
+What this proves: the shim's MMU setup, live-FDT parse, framebuffer console at
+0x9C000000, GIC init and the UFS host driver all work on SM8250 as-is. `tools/mkadt.py`
+now has `--cas` (1080x2340 panel, `xiaomi,cas|qcom,sm8250` identity) and generates
+`shim/out/cas.adt` (10088 bytes; `/product` still missing until the D22AP ADT is
+extracted from the IPSW).
+
+Not done tonight: no `gh` CLI and no token on the build host, so the kernel CI
+(`xnu.yml`) was not started; the kernel must be built first (see README), then
+`tools/mkpayload.py <kernel> shim/out/cas.adt shim/out/payload-cas.bin --cmdline ...`
+and `shim/build.sh shim/out/payload-cas.bin`.
 # iOS 16 on cas (Xiaomi Mi 10 Ultra, SM8250) — port from ios-sweet
 
 ## cas port handoff (2026-10-22, start of the fork)
