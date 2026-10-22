@@ -1,3 +1,28 @@
+### 2026-10-22 23:30 — FIXED: the shim jumps into a kernel on cas
+
+The `PANIC SYNC` was a bug in the hand-made payload builder, not in the shim:
+`struct payload_seg` is **32 bytes** (vmaddr, vmsize, file_off, file_size), so the
+segment array ends at 0x2a8 + 0x20 = 0x2c8. The stub was placed at 0x2b8, i.e. on top
+of `file_off`/`file_size`, so the shim read `file_off = 0x14000000` (the `b .`
+instruction!) and `file_size = 9`, and the copy faulted. With the stub at 0x2c8 the
+shim prints, on the cas panel:
+
+    INITRD lo=AFFFC000 hi=AFFFC000+A38
+    PHYS base=B0000000 size=09800000
+    COPY dst=B0000000 src=AFFFC2C8 / sz=00000004 va=B0000000
+    SEGS n=1 end=B0001000
+    BOOTARG pa=B0004000 top=B000B000
+    JUMP 00000000B0000000
+    XNU jumping (fbcon clears screen)
+
+and then nothing: the 4-byte stub (`b .`) runs forever at 0xB0000000. **The whole
+cas boot chain — shim, payload, ADT placement, boot_args, jump — works.**
+
+Payload address note: `mmu.c` maps only the first 8 GiB as Device and leaves the rest
+unmapped, so keep `phys_base` below 0x200000000 (0xB0000000 is what the test used;
+the ramdisk sits at 0xAFFFC000 and must not be overlapped).
+
+Next: build the real kernel (CI) and pack it with `tools/mkpayload.py` + `shim/out/cas.adt`.
 ### 2026-10-22 23:40 — stub-kernel test: shim faults on the payload path
 
 Built a hand-made SWEETXNU payload (40-byte stub that fills the ABL framebuffer blue and
