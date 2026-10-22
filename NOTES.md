@@ -1,3 +1,18 @@
+### 2026-10-22 23:41 — blue screen: the stub kernel runs on cas
+
+Retried the framebuffer-writing stub with the fixed segment offset: the panel becomes a
+solid pure blue (ARGB 0xFF0000FF) with no console text and no panic. The stub is a
+4-instruction fill of 1080x2340 pixels at 0x9C000000 then `b .`. So the whole chain works
+end to end on SM8250: fastboot -> shim -> ramdisk payload -> segment copy -> ADT ->
+boot_args -> jump -> "kernel" writing the panel.
+
+Tooling added for bring-up: `tools/cas_stub.S` and `tools/mkstub_payload.py`
+(raw-blob payload builder; `--phys/--virt/--mem/--cmdline`; keeps the 32-byte segment
+struct and the "below 8 GiB" MMU rule in mind).
+
+Next: the real kernel. Build it on GitHub Actions (needs `gh` + a token, not available on
+this host), pack with `tools/mkpayload.py <kernel> shim/out/cas.adt ...`, then boot and
+read the console.
 ### 2026-10-22 23:30 — FIXED: the shim jumps into a kernel on cas
 
 The `PANIC SYNC` was a bug in the hand-made payload builder, not in the shim:
