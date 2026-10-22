@@ -1,3 +1,31 @@
+# ios-cas — iOS 16 on the Xiaomi Mi 10 Ultra (cas, SM8250)
+
+> Fork of [ios-sweet](https://github.com/dipa-studio/ios-sweet) for the **Xiaomi Mi 10 Ultra**
+> (`cas`, Qualcomm SM8250 / Snapdragon 865). **Status: bring-up, nothing boots yet.**
+> Everything below the line is the original ios-sweet README.
+
+## Where the cas port stands (2026-10-22)
+
+Working on the phone, verified with photos of the panel:
+
+- The **sweet shim boots on cas unchanged**: console on the ABL framebuffer at
+  `0x9C000000`, `mmu.c` page tables, live-FDT parse, GIC init.
+- The shim's **UFS probe reads the cas GPT**: `ver=0x00000300 cap=0x1587031F`,
+  partitions persist/persistbak/logdump/rawdump/minidump/recovery/cache/exaid/cust/
+  super/userdata(f2fs)/**esp**/**win**.
+- `tools/mkadt.py --cas` builds the cas ADT (1080x2340 panel, `xiaomi,cas|qcom,sm8250`,
+  iPhone X userland identity, GIC 0x17A00000/0x17A60000 — same as sweet).
+
+Not working yet: a hand-made SWEETXNU payload with a 4-byte stub kernel still ends in
+`PANIC SYNC` at `STAGE loader`, right after the `ENTRY` line (i.e. inside the segment
+copy / boot_args placement), at `phys_base` 0x100000000, 0x200000000 and 0xB0000000
+alike. The panic frame and next steps are in `NOTES.md` ("cas port handoff").
+
+Everything else needs the kernel: the XNU patch series is still sweet's, the touch
+driver must become ST FTS521 on QUP1 SE5 (`0xA94000`, addr `0x49`, power through TLMM
+GPIO69, pads GPIO12/13 -> qup5), and the iPhone X 16.7.16 IPSW root image is not built.
+
+---
 # ios-sweet
 
 **Apple's iOS 16 running on a Redmi Note 10 Pro.**
