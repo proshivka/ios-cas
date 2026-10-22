@@ -1,3 +1,48 @@
+# iOS 16 on cas (Xiaomi Mi 10 Ultra, SM8250) — port from ios-sweet
+
+## cas port handoff (2026-10-22, start of the fork)
+
+Goal: the same stack as sweet — bare-metal shim (`fastboot boot`) -> XNU -> unmodified
+iOS 16.7 userland — but on `cas` (Xiaomi Mi 10 Ultra, Qualcomm SM8250, Snapdragon 865).
+
+**Why this base and not the Mu-Silicium/UEFI one:** the sweet shim needs no UEFI protocol
+for USB, no Qualcomm USB-device DXE and no PEP. Everything the UEFI route was missing
+(USB command channel, touch power, pin mux) is done in the shim or in XNU, where we own
+the MMIO. Abandoned on 2026-10-22: HackiOS/Mu-Silicium loader path (booted, exposed
+fastboot for a few seconds via the UEFI USB stack, then fell through to `run_kernel` ->
+`reboot()` because `QCOM_USB_DEVICE_GUID` is not in the cas UEFI).
+
+### Observations (measured on the device, not guesses)
+
+- `cas` GOP framebuffer: **0x9C000000**, 1080x2340x4 = 0x9A3F80 (dumped from the UEFI
+  at ReadyToBoot; same address sweet uses, ABL contiguous splash).
+- GIC: distributor **0x17A00000**, redistributor **0x17A60000** — identical to sweet.
+- CPUs: 8, MPIDR core in Aff1 (shift 8), little cluster mask 0xF (4x A55; 3x A77 + 1 prime).
+- Touch: STMicroelectronics FTS521 (FingerTipS, `st,fts`), I2C QUP1 SE5 at **0xA94000**,
+  7-bit address **0x49**, IRQ TLMM GPIO39, reset TLMM GPIO38.
+- Touch power: `vreg-touch-vddio` is a **regulator-fixed gated by TLMM GPIO69**
+  (`enable-active-high`), VDD from `vreg_l1a_1p8`. Not an RPMh LDO — in XNU this is a
+  TLMM pad write, no RPMh vote needed.
+- I2C pads: TLMM GPIO12/13, function `qup5` (mux value 1, mux_bit 2).
+- UFS host: `1d84000.ufshc` (same controller base as sweet; verify the ICE/PHY offsets).
+- Buttons: PM8150 PON (power, volume) — same PMIC family as sweet.
+- Linux in TWRP talks to all of the above (fts_probe + FW Update at every probe), so the
+  hardware is healthy; the firmware image `st_fts_j1s.ftb` is at C:\ports\st_fts_j1s.ftb.
+
+### Next actions (in order)
+
+1. Adapt `tools/mkadt.py`: cas node set — UFS at 0x1d84000, `disp0` 1080x2340 at
+   0x9C000000, CPU nodes for SM8250, `/buttons` (no home button, iPhone X identity).
+2. Shim: reuse as is (GIC/FB already match); confirm the live FDT gives the right memory
+   node and that UFS init works on SM8250.
+3. Kernel: start from the sweet patch series; replace the Sweet GENI I2C base
+   (0xA84000 -> 0xA94000) and the Goodix GT9896 protocol with the FTS521 one (the
+   protocol is already implemented in C:\ports\casfts\casfts.c: 0xB6 register read,
+   0x86 FIFO read, 8-byte events, no dummy byte).
+4. Kernel: touch power + pad mux in the touch driver (TLMM GPIO69 high, GPIO12/13 ->
+   qup5), replacing sweet's RPMh L11C vote.
+5. Build the kernel on GitHub Actions (fork is public): `gh workflow run xnu.yml -R proshivka/ios-cas`.
+6. iOS root image from the iPhone X 16.7.16 IPSW (see README).
 # iOS 16 on sweet (Redmi Note 10 Pro, SM7150) - working notes
 
 ## Agent handoff / active work (2026-10-15, latest)
