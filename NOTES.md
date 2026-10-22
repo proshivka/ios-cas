@@ -1,3 +1,23 @@
+### 2026-10-22 23:40 — stub-kernel test: shim faults on the payload path
+
+Built a hand-made SWEETXNU payload (40-byte stub that fills the ABL framebuffer blue and
+halts, plus `shim/out/cas.adt`) — `tools/../live/mkstub_payload.py` in the cas workspace —
+and booted `shim/build.sh out/payload-cas-stub.bin`. The payload is in the boot image
+(verified with `tools/unpack_bootv2.py`, 10824 bytes, `cmp` matches).
+
+Result on the phone: blue screen **plus the shim's panic overlay**:
+`PANIC SYNC`, `SLOT n=00000004 cpu=81000000`, `STAGE loader`,
+`ESR=96000000` (data abort, same EL, DFSC 0 = address size fault lvl 0),
+`ELR=A00825EC`, `FAR=52801FE382B34001` (which is the text of the stub's own instructions),
+`X0` = same, `X1=AFFFC000`, `X30=3130303030303030` ("10000000").
+
+Retried with the kernel at the other upper bank (0x200000000, the bank the live FDT
+lists: 0xC0000000+5G and 0x200000000+6G) — same `PANIC SYNC`. So it is not the RAM
+base; the fault is in the shim's payload copy/jump path (or in the exception-frame
+reporting). Next: capture ELR/FAR from both runs, compare with the sweet QEMU twin
+(`tools/qemu-sweet.py`), and check whether the shim needs the payload below 4 GiB or
+a different `pa_of_va_base` convention for SM8250. The stub + payload builder live in
+the cas workspace (`C:\ports\live\cas_stub.S`, `mkstub_payload.py`).
 ### MILESTONE 2026-10-22 23:10 — the sweet shim boots on cas
 
 `fastboot boot shim-cas.img` (sweet shim built unchanged, only the cas live FDT at
