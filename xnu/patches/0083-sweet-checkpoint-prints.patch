@@ -1,0 +1,118 @@
+diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
+--- a/bsd/kern/bsd_init.c
++++ b/bsd/kern/bsd_init.c
+@@ -489,6 +489,7 @@
+ #if (DEVELOPMENT || DEBUG)
+ 	platform_stall_panic_or_spin(PLATFORM_STALL_XNU_LOCATION_BSD_INIT);
+ #endif
++	printf("SWEETM 10 bsd_init\n");
+ 
+ #define DEBUG_BSDINIT 0
+ 
+@@ -1105,8 +1106,10 @@
+ kern_return_t
+ bsd_autoconf(void)
+ {
++	printf("SWEETM 20 bsd_autoconf\n");
+ 	kprintf("bsd_autoconf: calling kminit\n");
+ 	kminit();
++	printf("SWEETM 21 kminit done\n");
+ 
+ 	/*
+ 	 * Early startup for bsd pseudodevices.
+@@ -1119,7 +1122,10 @@
+ 		}
+ 	}
+ 
+-	return IOKitBSDInit();
++	printf("SWEETM 30 calling IOKitBSDInit\n");
++	kern_return_t swret = IOKitBSDInit();
++	printf("SWEETM 31 IOKitBSDInit ret %d\n", swret);
++	return swret;
+ }
+ 
+ 
+@@ -1131,7 +1137,9 @@
+ 	u_int32_t       flags;
+ 	kern_return_t   err;
+ 
++	printf("SWEETM 40 setconf\n");
+ 	err = IOFindBSDRoot(rootdevice, sizeof(rootdevice), &rootdev, &flags);
++	printf("SWEETM 41 IOFindBSDRoot ret %d\n", err);
+ 	if (err) {
+ 		printf("setconf: IOFindBSDRoot returned an error (%d);"
+ 		    "setting rootdevice to 'sd0a'.\n", err);     /* XXX DEBUG TEMP */
+diff --git a/iokit/bsddev/IOKitBSDInit.cpp b/iokit/bsddev/IOKitBSDInit.cpp
+--- a/iokit/bsddev/IOKitBSDInit.cpp
++++ b/iokit/bsddev/IOKitBSDInit.cpp
+@@ -776,6 +776,7 @@
+ 	{
+ 		extern void sweet_ufs_beacon(unsigned int stage, unsigned int color);
+ 		extern void sweet_log_start_early(void);
++		printf("SWEETM 50 IOFindBSDRoot\n");
+ 		sweet_ufs_beacon(0, 0xffffffffu);        /* 0: white - BSD init reached */
+ 		sweet_log_start_early();
+ 	}
+diff --git a/bsd/dev/sweet_ufs.c b/bsd/dev/sweet_ufs.c
+--- a/bsd/dev/sweet_ufs.c
++++ b/bsd/dev/sweet_ufs.c
+@@ -618,6 +618,7 @@
+ 	}
+ 	PE_parse_boot_argn("ufsroot", want, sizeof(want));
+ 	/* 1: green - the UFS driver is being entered at all. */
++	printf("SWEETM 60 sweet_ufs_init\n");
+ 	sweet_ufs_beacon(SWEET_MARK_UFS_ENTER, 0xff00cc00u);
+ 	uint32_t rw = 0;
+ 	PE_parse_boot_argn("ufsrw", &rw, sizeof(rw));
+@@ -644,6 +645,7 @@
+ 	lck_mtx_lock(&sweet_ufs_lock);
+ 	error = ufs_take_over_host();
+ 	/* 3: blue - the host took our request list; 2: red - it did not. */
++	printf("SWEETM 61 ufs_take_over_host ret %d\n", error);
+ 	sweet_ufs_beacon(error ? SWEET_MARK_HOST_FAIL : SWEET_MARK_HOST_OK,
+ 	    error ? 0xffcc0000u : 0xff0000ccu);
+ 	if (!error) {
+@@ -657,6 +659,7 @@
+ 	}
+ 	if (!error) {
+ 		/* 4: yellow - GPT parsed, the named partition is known. */
++		printf("SWEETM 62 partition found\n");
+ 		sweet_ufs_beacon(SWEET_MARK_PART_OK, 0xffcccc00u);
+ 	}
+ 	lck_mtx_unlock(&sweet_ufs_lock);
+@@ -911,6 +914,7 @@
+ 	thread_deallocate(thread);
+ 	__atomic_store_n(&sweet_log_early, 1, __ATOMIC_RELEASE);
+ 	/* 5: cyan - the log flush thread is running. */
++	printf("SWEETM 63 log thread up\n");
+ 	sweet_ufs_beacon(SWEET_MARK_LOG_START, 0xff00ccccu);
+ }
+ 
+@@ -921,6 +925,7 @@
+ sweet_ufs_rootdev(dev_t *dev)
+ {
+ 	/* 6: magenta - IOFindBSDRoot asked us for the root device. */
++	printf("SWEETM 64 sweet_ufs_rootdev\n");
+ 	sweet_ufs_beacon(SWEET_MARK_ROOTDEV, 0xffcc00ccu);
+ 	if (!su.ready) {
+ 		int error = sweet_ufs_init();
+@@ -967,6 +972,19 @@
+ 			line[x] = color;
+ 		}
+ 	}
++	/*
++	 * A 900x80 bar per stage in the lower half. The console only draws
++	 * at the top, so a bar that appears proves the framebuffer path
++	 * works even if the bottom row is outside the visible area.
++	 */
++	x0 = 90;
++	y0 = 1400 + stage * 120;
++	for (y = y0; y < y0 + 80; y++) {
++		volatile unsigned int *line = fb + y * 1080 + x0;
++		for (x = 0; x < 900; x++) {
++			line[x] = color;
++		}
++	}
+ 	__asm__ volatile("dsb sy" ::: "memory");
+ }
+ 
