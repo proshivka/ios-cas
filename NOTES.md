@@ -1,3 +1,63 @@
+### 2026-10-24 late - console logging: what actually works on cas
+
+Goal for this session: stop reading the kernel console through OCR of a phone
+photo. Found three existing channels and measured each on the device.
+
+**1. The persistent console log (patch 0047) never gets a chance to start.**
+`tools/sweet-log-pull.sh` (last 1025 blocks of userdata) read all zeros on
+three boots, so the 4 MiB ring never left RAM. Two reasons were found, in order:
+
+- `sweet_log_start()` is only called from `sweet_ufs_rootdev()`, i.e. from
+  `IOFindBSDRoot()` (patch 0028, IOKitBSDInit). On cas the kernel stops before
+  that point, so the thread never existed. Fixed by adding an IOKit-free
+  `sweet_log_start_early()` (maps `/sweet-ufs`, takes the host over, finds
+  the partition, starts the same flush thread) and calling it from the SWEET
+  branch of `IOKitBSDInit.cpp` right after the ufsroot0 block. CI
+  `40011723787` green, `sweet_log_start_early` is in the binary.
+- Even then writes stay off: `su.writable` is only set by boot-arg
+  `ufsrw=1` (patch 0030). The cmdline used so far
+  (`debug=0xc serial=3 keepsyms=1 -v`) did not have it, so the logger
+  correctly refused. Re-packed with
+  `... ufsrw=1 sweetlog=1 rd=ufsroot0 ufsroot=userdata` and booted again -
+  **still zeros**, so UFS itself is not coming up before the stop, and that is
+  the real blocker, not the logger.
+
+**2. The boot console ring is ~18 KiB, not a screenful.**
+The built kernel carries `console_ring.len == 256 * (8+1)` rounded up to 16 KiB
+(assertion text at 0x741a2 in kernel.development.sweet) - 256 entries of up to
+8 chars plus terminator, i.e. ~16-18 KiB of console history on top of the
+terminal. A boot that prints more than that loses the beginning, not the end,
+and the end is what we need. `cpus=` does not change it.
+
+**3. There is no usable hardware serial on cas yet.** No GENI/QUP-UART driver
+in any patch (only I2C on QUPv3 SE5/SE7 and DWC3 for USB). Adding one needs the
+debug-UART base from the live FDT, which is not recorded anywhere in the repo,
+plus GSI/DMA setup - a bigger job than it looks. USB live log (patch 0077) is
+useless at this stage too: it needs the network stack, which needs BSD init,
+which is exactly where we stop.
+
+**So the next step is not logging - it is finding out why UFS is not touched.**
+The console scrolls on screen (fbcon wraps and clears the row ahead), so the
+critical lines can vanish before the eye gets there. Concretely:
+- boot the same image with `sweetfb_noconsole=1` (patch 0067): the GUI stop
+  is irrelevant here, but the flag also proves the console path is alive;
+- better: add a *stall* hook - when `sweet_ufs` is not reached, the kernel
+  paints a marker band. Cheap, and it separates "died before BSD init" from
+  "died inside UFS init" without any OCR;
+- and keep `cpus=1` out of the picture for one boot: SMP bring-up starts
+  kernel threads, and that is where the log flush thread would live.
+
+Images built this round (all in C:\ports):
+`shim-cas-r3.img` sha256 5AFA7D37... (early log fix, no ufsrw),
+`shim-cas-r4.img` (same kernel + `ufsrw=1 sweetlog=1 rd=ufsroot0
+ufsroot=userdata`). CI runs: `40006541975` (wildcard match), `40011723787`
+(early log). Kernel r3 sha256 70f16a22... 17206208 bytes.
+
+Tooling added (C:\ports\live, not in git): `pull_sweetlog.ps1` (ADB pull of
+the ring, Windows-safe binary handling), `pull_sweetlog.sh`,
+`validate_patches.sh` (hunk header arithmetic - catches the silent
+"context line lost its prefix" failure that Edit produces),
+`regen_adt.sh`, `mkpayload_cas.sh`, `check_image.sh`,
 ### 2026-10-24 - MILESTONE: XNU boots on the Mi 10 Ultra (cas)
 
 The image packed from the CI kernel booted on the phone and **XNU started for real**: the
