@@ -122,7 +122,7 @@ diff --git a/bsd/dev/sweet_ufs.c b/bsd/dev/sweet_ufs.c
 +		lck_mtx_unlock(&sweet_ufs_lock);
 +	}
 +	if (!su.writable || su.nblocks < 2 * SWEET_LOG_BLOCKS) {
-+		printf("SWEET LOG: no writable area on \\"%s\\", early log off\n", want);
++		printf("SWEET LOG: no writable area on %s, early log off\n", want);
 +		return;
 +	}
 +	/*
