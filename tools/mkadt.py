@@ -232,14 +232,12 @@ def build(seed=None, qemu=False, highmem=False, cas=False):
     pram = node('pram', [ph(), ('reg', u64(panic_base) + u64(PANIC_LOG_SIZE))])
 
     # Identity of the iPhone X whose userland runs here: compatible[0] is
-    # hw.model/hw.target (D22AP), model is hw.machine/hw.product
-    # (iPhone10,3). The root 'xiaomi,*' wildcard is what SweetPlatformExpert
-    # matches, so a new board only needs mkadt.py changed, not the kernel.
+    # (iPhone10,3). compatible[0] also names the board, and SweetPlatformExpert
+    # matches the 'xiaomi,*' family, so a new board only needs mkadt.py changed.
     return node('device-tree', [
         ph(),
         ('compatible', cstr('D22AP') + cstr('iPhone10,3') +
                       cstr('xiaomi,cas' if cas else 'xiaomi,sweet') +
-                      cstr('xiaomi,*') +
                       cstr('qcom,sm8250' if cas else 'qcom,sm7150') + cstr('AppleARM')),
         ('model', cstr('iPhone10,3')),
         ('target-type', cstr('D22')),
