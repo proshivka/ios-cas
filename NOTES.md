@@ -1,3 +1,49 @@
+### 2026-10-25 (ночь) - r6 booted: SWEETM prints shipped, framebuffer marks definitively dead
+
+Round after `0082`: the marks never showed up on the panel, so the open question is
+**where exactly the kernel dies**. Patch `0083-sweet-checkpoint-prints.patch` (3577 B)
+adds `printf("SWEETM <n> ...")` checkpoints, because console text is the only channel
+that provably reaches the user's camera.
+
+- Marks 10 `bsd_init` entry, 20 `bsd_autoconf`, 21 after `kminit`, 30/31 around
+  `IOKitBSDInit()` (with the `kern_return_t`), 40/41 around `IOFindBSDRoot()` in
+  `setconf`, 50 `IOFindBSDRoot` entry, then UFS stages 60/61 host take-over result,
+  62 partition, 63 flush thread, 64 `sweet_ufs_rootdev`.
+- `sweet_ufs_beacon()` was extended to also paint a **900x80 bar at x=90,
+  y=1400+stage\*120** (lower half, nowhere near the scrolling text) so the two
+  hypotheses - "`IOFindBSDRoot` never reached" vs "marks drawn outside the scanned
+  surface" - could be separated by one photo.
+- Local `chain.sh`: **85 applied / 6 skipped**, `0083` APPLIED, 0 CRLF lines.
+  Commit `533dca7`, CI `40025240453` green at 21:21:10Z, kernel r6 sha256
+  `da0b43cba659b8f0...` (17 206 336 B) contains all eight `SWEETM` strings exactly once.
+- Packed with `shim/build.sh out/payload-cas-r6.bin` (argument must be shim-relative -
+  a wrong path silently reuses the previous `shim-boot.img`) into
+  `C:\ports\shim-cas-r6.img`, 17 772 544 B, sha256 `74a2a794743cee25...`.
+
+**Boot result (observation):** `fastboot boot` accepted, after ~110 s the device is back
+in TWRP (`adb devices` -> `93887714 recovery`) => the kernel ran and died again. The
+`sweetlog` ring pulled right after (`pull_sweetlog.ps1`, 4 198 400 B) is still
+8 x `00` - "no SWEETLOG header" - so even `sweet_log_start_early()` from mark 0 wrote
+nothing persistent.
+
+**User feedback on the panel (observation, important):** "никаких квадратов вообще не
+было" - including the bright 900x80 bars in the lower half. Conclusion: our writes into
+`/sweet-fbcon` are not what the display scan-out shows (AppleCLCD presents its own
+surface). **Stop investing in framebuffer marks; all bring-up diagnostics go through
+`printf`.** The beacon code stays (costs nothing) but is no longer a diagnostic.
+
+**Reading the checkpoints on the next photo:**
+no `SWEETM` at all -> died before `bsd_init` (next hooks: `arm_init`/`KernelInit`,
+`osfmk/arm/startup.c:598`); `10` only -> died inside `bsd_init` before `bsd_autoconf`;
+`20` but not `21` -> inside `kminit`; `30` without `31` -> hang inside `IOKitBSDInit`;
+`40` without `41` -> hang inside `IOFindBSDRoot`; `50` -> our hook was reached;
+`60/61` -> UFS take-over result; `62/63` -> partition / flush thread; `64` -> rootdev
+asked for.
+
+**Note for the next session:** `git status` in `C:\ports\ios-cas` shows ~40 files as
+modified; only `shim/loader.c` has a real diff (+2 lines, origin unknown), the rest is
+line-ending/filemode noise from git's autocrlf. Don't accidentally commit that.
+
 ### 2026-10-25 - bring-up marks as tail patch 0082 (chain verified locally)
 
 **A green CI run was hiding ~20 skipped patches.** `darwin-xnu-build` applies each

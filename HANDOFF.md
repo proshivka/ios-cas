@@ -1,3 +1,39 @@
+## === АКТУАЛЬНО НА 2026-10-25 (читать это, раздел 0 ниже устарел) ===
+
+**Где мы:** настоящее XNU-ядро (собрано в CI) реально стартует на телефоне и доходит
+до BSD-инициализации, после чего телефон умирает и сам уходит в TWRP.
+
+Последний подтверждённый экран (фото, run `39995850227`): `SWEET: platform expert registered`,
+`SWEET KS: AppleKeyStore registered`, `SWEET WDT`, `SWEET SURF`, `SWEET HID`, `SWEET BATTERY`,
+`SWEET FB: AppleCLCD 1080x2340 stride 4320 at 0x9C000000 … presented as 1175x2436`,
+`SWEET CPU: requested=8 selected=8`, `BSD framework successfully initialized`,
+`1 cpu: 1/1 cpus initialized`, затем `zone init / kalloc / core …` и стоп.
+
+**Каналы диагностики — вывод:**
+* Текст консоли читается с фото → это основной канал (`printf`).
+* Метки/квадраты в framebuffer **не видны вообще**, включая яркие полосы 900x80 в нижней
+  половине (y = 1400 + stage\*120), специально нарисованные вдали от текста.
+  Значит AppleCLCD выводит свой буфер, а не тот, куда мы пишем → **метки больше не развиваем**.
+* `sweetlog`-кольцо в `userdata` остаётся нулевым после r5 и r6: даже `sweet_log_start_early()`
+  из `IOFindBSDRoot()` (mark 0) данных не оставил. Либо код не дошёл, либо запись блоками
+  UFS так рано не работает / смещение не то.
+
+**Сделано за последний заход:** патч `0083-sweet-checkpoint-prints.patch` — `printf("SWEETM <n> …")`
+по всей цепочке (`bsd_init` 10 → `bsd_autoconf` 20 → после `kminit` 21 → вокруг `IOKitBSDInit()` 30/31
+→ `setconf` до/после `IOFindBSDRoot` 40/41 → вход в `IOFindBSDRoot` 50 → ступени UFS 60/61/62/63/64).
+CI `40025240453` зелёный, ядро r6 (sha256 `da0b43cba659b8f0…`) упаковано в `C:\ports\shim-cas-r6.img`
+(sha256 `74a2a794743cee25…`), образ **загружен** — телефон через ~110 с снова в TWRP.
+
+**Главное открытие:** зелёный CI ничего не гарантирует — `darwin-xnu-build` применяет патчи
+через `git apply --check` и только пишет `warning "Skipping patch"`. Источник правды —
+локальный `chain.sh` (сейчас **85 applied / 6 skipped**, `0083` APPLIED).
+
+**Следующее действие:** попросить у пользователя фото экрана после r6 и прочитать строки
+`SWEETM <n>` — они однозначно покажут точку смерти (см. таблицу в `NOTES.md`).
+Если `SWEETM` нет вообще → умирает до `bsd_init` (цеплять `arm_init`/`KernelInit`).
+
+---
+
 # HANDOFF — iOS 16 на Xiaomi Mi 10 Ultra (cas) — 2026-10-24
 
 > Этот файл восстановлен по сессии `C:\ports\deepseeksessions\1session\` (4571 события, 60 ходов,
