@@ -1,3 +1,33 @@
+### 2026-10-24 - first real XNU on cas: platform match fixed (wildcards)
+
+CI run `39995850227` had actually finished green after the previous session died on quota.
+Downloaded `xnu-kernel` (kernel.development.sweet, 17 206 064 bytes, sha256 d9d88af7...)
+and booted it unchanged first as a control (it still matched 'xiaomi,sweet').
+
+Root cause, measured in the binary instead of guessed: `iokit/KernelConfigTables.cpp` is
+one huge C string literal, and the kernel contained `'IONameMatch' = 'xiaomi,sweet'`
+(SweetPlatformExpert) and `'qcom,kryo470'` (SweetCPU) verbatim, while the cas ADT says
+`xiaomi,cas` / `qcom,kryo585`. Those matches are **wildcards** in IOBSDNameMatching, so
+the fix is the family, not the board name: patches 0016/0018/0038 now use `'xiaomi,*'` and
+`'qcom,kryo*'`. Because the table is a single literal, every hunk in 0018/0038 that used
+the old line as **context** had to change as well, otherwise the later hunks stop applying.
+
+Rebuilt: CI run `40006541975` green (about 6 min). New kernel sha256 a128b3e4...; verified
+in the binary: 'xiaomi,*' x1, 'xiaomi,sweet' x0, 'qcom,kryo*' x1, 'qcom,kryo470' x0.
+`tools/mkadt.py --cas` re-run produces a byte-identical ADT (10088 bytes), so the kernel
+alone decides the match now.
+
+Image: `shim/out/shim-boot-cas-kernel.img` and `C:\ports\shim-cas-kernel.img`
+(17 772 544 bytes, sha256 DC4C30BA...): payload 16 610 960 bytes, 10 segments,
+virt_base 0xfffffe0006000000, entry 0xfffffe000748b488, phys_base 0xB0000000,
+mem 0x4cf00000 (end 0xfcf00000, inside the shim's 8 GiB Device map), ADT 0x2768 bytes inside
+the payload, cmdline `debug=0xc serial=3 keepsyms=1 -v`, ramdisk byte-identical to payload.
+
+Helper scripts (in C:\ports\live, not in git): `regen_adt.sh` - **mkadt.py writes its output
+itself to argv[1] and does NOT print the blob to stdout, so redirecting it truncates the ADT
+to 0 bytes**; `mkpayload_cas.sh`; `check_image.sh`. `qemu-system-aarch64` is not
+installed on this host, so the QEMU twin (tools/qemu-sweet.py) cannot run here; the boot was
+verified statically (payload header, segment table, ADT strings) before flashing instead.
 ### 2026-10-24 - recovered handoff after the quota death (read `HANDOFF.md`)
 
 The 2026-10-23 session died on `ACCOUNT_QUOTA` (402) right after the platform-match grep, so the
