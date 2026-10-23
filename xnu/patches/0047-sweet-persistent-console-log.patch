@@ -16,7 +16,7 @@
  
  #define REG_CAP         0x00
  #define REG_IS          0x20
-@@ -591,9 +596,116 @@
+@@ -591,9 +596,201 @@
  	printf("SWEET UFS: \"%s\" on LUN %u: first block 0x%llx, %llu MiB, %s, DMA at 0x%llx\n",
  	    want, su.lun, su.first_block, su.nblocks * UFS_BLOCK >> 20,
  	    su.writable ? "read-write" : "read-only", su.dma_pa);
@@ -126,6 +126,91 @@
 +		return;
 +	}
 +	if (kernel_thread_start(sweet_log_thread, NULL, &thread) == KERN_SUCCESS) {
++		thread_deallocate(thread);
++	}
++}
++
++/*
++ * Log the boot console even when nothing has claimed the root yet.
++ *
++ * sweet_log_start() only runs once a root device tried to be "userdata", which
++ * happens in IOFindBSDRoot() - i.e. after the BSD init has made it that far.
++ * A bring-up kernel usually stops EARLIER (zone init, pmap, IOKit matching),
++ * and then the 4 MiB ring never leaves RAM: the screen is the only copy.
++ * So an IOKit-free path also starts the flush thread from a kernel thread as
++ * soon as the UFS register block is mapped and the partition is known.
++ */
++static uint32_t sweet_log_started;
++
++void
++sweet_log_start_early(void)
++{
++	uint32_t on = 1;
++	char want[64] = "userdata";
++	thread_t thread;
++
++	PE_parse_boot_argn("sweetlog", &on, sizeof(on));
++	if (!on || __atomic_load_n(&sweet_log_started, __ATOMIC_ACQUIRE)) {
++		return;
++	}
++	PE_parse_boot_argn("ufsroot", want, sizeof(want));
++	DTEntry node;
++	uintptr_t const *reg = NULL;
++	unsigned int size = 0;
++	if (SecureDTLookupEntry(NULL, "/sweet-ufs", &node) != kSuccess ||
++	    SecureDTGetProperty(node, "reg", (void const **)&reg, &size) != kSuccess ||
++	    size < 2 * sizeof(uintptr_t)) {
++		return;
++	}
++	su.regs = ml_io_map(reg[0], reg[1]);
++	if (su.regs == NULL) {
++		return;
++	}
++	if (kmem_alloc_contig(kernel_map, &su.dma, DMA_SIZE, PAGE_MASK, 0, 0,
++	    KMA_DATA | KMA_ZERO | KMA_PERMANENT, VM_KERN_MEMORY_IOKIT) != KERN_SUCCESS) {
++		return;
++	}
++	ppnum_t pn = pmap_find_phys(kernel_pmap, (addr64_t)su.dma);
++	if (!pn) {
++		return;
++	}
++	su.dma_pa = ptoa_64(pn);
++	su.lun = 0;
++	su.secsize = DEV_BSIZE;
++	if (ufs_take_over_host() != 0) {
++		return;
++	}
++	if (ufs_find_partition(want) != 0 || !su.writable ||
++	    su.nblocks < 2 * SWEET_LOG_BLOCKS) {
++		return;
++	}
++	/* Another root device may already be in bdevsw; the log needs no dev node. */
++	su.bmajor = bdevsw_add(-1, &sweet_ufs_bdevsw);
++	su.cmajor = cdevsw_add_with_bdev(-1, &sweet_ufs_cdevsw, su.bmajor);
++	su.ready = true;
++	if (kernel_thread_start(sweet_log_thread, NULL, &thread) == KERN_SUCCESS) {
++		thread_deallocate(thread);
++		__atomic_store_n(&sweet_log_started, 1, __ATOMIC_RELEASE);
++	}
++}
++
++static void
++sweet_log_boot_thread(__unused void *arg, __unused wait_result_t wr)
++{
++	sweet_log_start_early();
++}
++
++static void
++sweet_log_boot_hook(void)
++{
++	uint32_t on = 1;
++	thread_t thread;
++
++	PE_parse_boot_argn("sweetlog", &on, sizeof(on));
++	if (!on) {
++		return;
++	}
++	if (kernel_thread_start(sweet_log_boot_thread, NULL, &thread) == KERN_SUCCESS) {
 +		thread_deallocate(thread);
 +	}
 +}

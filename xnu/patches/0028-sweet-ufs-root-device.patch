@@ -12,7 +12,7 @@ diff --git a/bsd/conf/files b/bsd/conf/files
 diff --git a/iokit/bsddev/IOKitBSDInit.cpp b/iokit/bsddev/IOKitBSDInit.cpp
 --- a/iokit/bsddev/IOKitBSDInit.cpp
 +++ b/iokit/bsddev/IOKitBSDInit.cpp
-@@ -766,6 +766,24 @@
+@@ -766,6 +766,30 @@
  		}
  	}
  
@@ -33,6 +33,12 @@ diff --git a/iokit/bsddev/IOKitBSDInit.cpp b/iokit/bsddev/IOKitBSDInit.cpp
 +		goto iofrootx;
 +	}
 +#endif
++
++/* Persist the console ring before anything below can hang: no IOKit needed. */
++	{
++		extern void sweet_log_start_early(void);
++		sweet_log_start_early();
++	}
 +
  //
  //	Now check if we are trying to root on a memory device
