@@ -141,6 +141,8 @@ def build(seed=None, qemu=False, highmem=False, cas=False):
         cpu_nodes.append(node(f'cpu{core}', [
             ph(),
             ('device_type', cstr('cpu')),
+            # The CPU wildcard follows the board: SweetCPU matches the whole
+            # 'qcom,kryo*' family, so sweet (kryo470) and cas (kryo585) both bind.
             ('compatible', cstr('qcom,kryo585' if cas else 'qcom,kryo470') + cstr('ARM,v8')),
             ('reg', u32(core << 8)),  # actual MPIDR Aff1:Aff0, NOT logical ID
             ('cpu-id', u32(core)),   # descriptive: XNU assigns IDs by DT order
@@ -231,11 +233,13 @@ def build(seed=None, qemu=False, highmem=False, cas=False):
 
     # Identity of the iPhone X whose userland runs here: compatible[0] is
     # hw.model/hw.target (D22AP), model is hw.machine/hw.product
-    # (iPhone10,3). 'xiaomi,sweet' stays for SweetPlatformExpert matching.
+    # (iPhone10,3). The root 'xiaomi,*' wildcard is what SweetPlatformExpert
+    # matches, so a new board only needs mkadt.py changed, not the kernel.
     return node('device-tree', [
         ph(),
         ('compatible', cstr('D22AP') + cstr('iPhone10,3') +
                       cstr('xiaomi,cas' if cas else 'xiaomi,sweet') +
+                      cstr('xiaomi,*') +
                       cstr('qcom,sm8250' if cas else 'qcom,sm7150') + cstr('AppleARM')),
         ('model', cstr('iPhone10,3')),
         ('target-type', cstr('D22')),
