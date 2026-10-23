@@ -1,3 +1,56 @@
+### 2026-10-24 - MILESTONE: XNU boots on the Mi 10 Ultra (cas)
+
+The image packed from the CI kernel booted on the phone and **XNU started for real**: the
+fbcon console comes up and the platform expert, the built-in drivers and the kernel
+subsystems print. Lines read off the screenshot (OCR of a 1440x2560 photo, so spelling is
+best-effort but the content is unambiguous):
+
+    XNU requested, consistent debug disabled or debug kext not
+    Boot args not a kext
+    SWEET: starting device-tree platform expert
+    SWEET: platform expert registered
+    SWEET KS: AppleKeyStore registered (no passcode, unlocked)
+    SWEET WDT: IOWatchdog registered (accepts check-ins, never fires)
+    SWEET SURF: IOCoreSurfaceRoot registered
+    SWEET HID: Buttons registered (test every 8 s)
+    SWEET HID: Touch registered
+    SWEET BATTERY: static battery
+    SWEET FB: AppleCLCD 1080x2340 stride 4320 at 0x9C000000 - default surface
+    present, presented as 1175x2436
+    SWEET CPU: requested=8 selected=8 (cpus=8 all alive; SGI)
+    Copyright (c) 1982, 1986, 1989, 1991, 1993 The Regents of the University of
+    California. All rights reserved.
+    BSD framework successfully initialized
+    using N buffer headers and N cluster IO buffer headers
+    1 cpu: 1/1 cpus initialized
+    zone init ... / kalloc ... / core ...
+
+What this proves, and it is a first on this hardware: shim -> payload -> segment copy ->
+ADT -> boot_args -> jump -> **real XNU running in EL1** with a live framebuffer console,
+a matched SweetPlatformExpert (the 'xiaomi,*' fix works), SweetCPU on 'qcom,kryo*', the
+fake keystore/watchdog/surface/HID/BATTERY devices, and the BSD zone allocator.
+
+Where it stopped: past `1 cpu: 1/1 cpus initialized` (SMP is still one core: the ADT lists
+8 CPUs but the kernel started single-core), through zone/zalloc init, then the console stops
+in the kalloc/zone-init block. The last legible lines are `core ... kalloc ...` followed by
+a slab of hex, which is the shape of a **panic or a data abort** rather than a clean halt -
+but the screen ends without a legible panic banner, so the tail still has to be recovered.
+
+Not yet on the road: nothing after the zone allocator - no VM/pmap bring-up, no IOKit
+matching of the UFS/display nodes, no init task. The phone rebooted back to recovery by
+itself a few minutes later.
+
+Next actions, in order:
+1. Re-boot the same image with a **serial console** so the tail is machine-readable instead
+   of a photo: the fbcon text is truncated on screen and OCR cannot separate the last lines.
+2. If serial is not up yet, capture the tail with a smaller font or a bigger capture: boot
+   with `debug=0xc -v keepsyms=1` plus `-enable_kprintf_spam` and photograph at the
+   moment of stop (the screen is wiped on reboot, ramoops holds Android's log, not ours).
+3. Suspects for a data abort right after zone init, in this order: (a) the cpu topology
+   patch 0018/0065 expecting an IOInterruptController that is still not attached, (b) the
+   pmap/VMAPPLE physmap assumptions vs the cas dram-base 0xB0000000 window, (c) the
+   `__DATA` segment's s_zero-fill (16 061 004 of 5 452 800 memset at boot).
+4. Keep `ramdisk` out of the picture: IOFindBSDRoot has not been reached yet.
 ### 2026-10-24 - first real XNU on cas: platform match fixed (wildcards)
 
 CI run `39995850227` had actually finished green after the previous session died on quota.
