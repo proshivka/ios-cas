@@ -1,3 +1,66 @@
+### 2026-10-25 (поздняя ночь) - kprintf в DEVELOPMENT заглушён: почему r8 не показал SWEETI 27
+
+`0085-sweet-iokit-time-marks.patch` (чекпоинты вокруг `IOKitInitializeTime()`) собрался
+со второй попытки (первая упала на `boolean_t sw_got = IOService::waitForService(...)` -
+функция возвращает `IOService *`, теперь `IOService * sw_svc` + `%p`). CI
+`40075470803` зелёный, ядро sha256 `ec19def33d2989e4...`, образ `shim-cas-r8.img`
+sha256 `688c76707f1d9c17...`, все шесть строк-маркеров по одному разу.
+
+**Наблюдение:** экран r8 **побайтово совпал с r7** - после `SWEETI 13 bufferinit-done`
+идут `bufferhdr` / `kmem_large_ranges[...]` / `"vm_compressor_mode" is 4` /
+`zone_init: pgzalloc|map VM|map RO`, и `SWEETI 27 iokit-time-in` **не появляется**.
+То есть ядро не доходит даже до первой строки `IOKitInitializeTime()`, хотя между
+`13` и вызовом этой функции в `bsd_init.c` нет ничего, кроме `bsd_init_kprintf()`.
+
+**Причина (установленный факт, не догадка):** v1 патча печатал маркеры через
+`kprintf()`, а в DEVELOPMENT-ядре он выключен компиляцией:
+`pexpert/arm/pe_kprintf.c`:
+
+```c
+SECURITY_READ_ONLY_LATE(bool) disable_kprintf_output = true;   /* только kprintf */
+#elif DEVELOPMENT
+    if (PE_parse_boot_argn("-enable_kprintf_spam", ...)) disable_kprintf_output = false;
+#endif
+...
+if (!disable_serial_output && !disable_kprintf_output) { /* печать */ }
+```
+
+`printf()` (`osfmk/kern/printf.c`) этим флагом **не** закрыт - он идёт через
+`console_printbuf_putc` -> `console_write_char`, то есть ровно в тот канал, который
+видит наш `sweet` framebuffer console. Все предыдущие маркеры (`SWEET`, `SWEETM`,
+`SWEETI`, `SWEETB`) были `printf` и поэтому были видны. Значит "экран остановился"
+означало не смерть, а замолчавший маркер.
+
+**Правило на будущее:** любой диагностический вывод в этом порте - только `printf()`
+(или `-enable_kprintf_spam=1` в cmdline, но это лишний риск). В IOKit-`.cpp` объявление
+берётся локально: `extern "C" int printf(const char *fmt, ...) __printflike(1, 2);`
+(владелец объявления - `osfmk/kern/misc_protos.h`).
+
+Пересобран `0085` v2 (1668 B, 0 CR), локально `chain.sh` = **87 applied / 6 skipped**,
+`0085` APPLIED. Коммит `1ac67c6`, CI `40077013520`.
+CI `40077013520` зелёный (kernel sha256 `f9cc2bfde1db0398...`), собран и **загружен**
+образ r9: `C:\ports\shim-cas-r9.img`, 17 772 544 B, sha256 `3b70d79fc1aab1e6...`,
+payload `shim/out/payload-cas-r9.bin` (16 611 232 B), cmdline
+`debug=0xc serial=3 keepsyms=1 -v ufsrw=1 sweetlog=1 rd=ufsroot0 ufsroot=userdata`.
+Пользователь ушёл, фото экрана r9 ещё не снято - **следующее действие сессии:
+сфотографировать/прислать хвост экрана r9** (`SWEETI 27/28/29/2A`) или просто снова
+`powershell -File boot_r8.ps1 -Tag r9` и снять фото.
+
+Как читать r9:
+
+- нет `27` -> смерть до входа в `IOKitInitializeTime()` (тогда следующий шаг - маркер
+  в `bsd_init` после `13` и внутри `bsd_init_kprintf`, но это уже не должно случаться,
+  т.к. `printf` работает);
+- `27`, нет `28` -> висим в `IOService::waitForService("IORTC")`; лечится boot-arg
+  `nortc=1` (пересобрать payload, CI не нужен);
+- `28` есть, нет `29` -> смерть в `clock_initialize_calendar()` до его первой строки;
+- `29`, нет `2A` -> смерть внутри `clock_initialize_calendar()`/`PEGetUTCTimeOfDay()`;
+  лечится `nocal=1`;
+- `2A` есть -> блок времени пройден, дальше смотрим `SWEETI 15/16` (`vfsinit`).
+
+Оба escape-флага проверяются тем же ядром: `RID=40077013520 TAG=r9n bash build_r8.sh nortc=1 r9n`
+(аналогично `nocal=1`), затем `boot_r8.ps1 -Tag r9n`. CI пересборка не требуется.
+---
 ### 2026-10-25 (ночь) - r6 booted: SWEETM prints shipped, framebuffer marks definitively dead
 
 Round after `0082`: the marks never showed up on the panel, so the open question is
