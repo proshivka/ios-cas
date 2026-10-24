@@ -13,18 +13,18 @@ diff --git a/iokit/Kernel/IOStartIOKit.cpp b/iokit/Kernel/IOStartIOKit.cpp
  	t.tv_sec = 30;
  	t.tv_nsec = 0;
  
-+	printf("SWEETI 27 iokit-time-in\n");
++	kprintf("SWEETI 27 iokit-time-in\n");
  // RTC is not present on this target
  #ifndef BCM2837
 -	IOService::waitForService(
 -		IOService::resourceMatching("IORTC"), &t );
 +	unsigned int sw_nortc = 0;
 +	if (PE_parse_boot_argn("nortc", &sw_nortc, sizeof(sw_nortc)) && sw_nortc) {
-+		printf("SWEETI 28 rtc-wait skipped\n");
++		kprintf("SWEETI 28 rtc-wait skipped\n");
 +	} else {
-+		boolean_t sw_got = IOService::waitForService(
++		IOService * sw_svc = IOService::waitForService(
 +			IOService::resourceMatching("IORTC"), &t );
-+		printf("SWEETI 28 rtc-wait ret %d\n", (int)sw_got);
++		kprintf("SWEETI 28 rtc-wait ret %p\n", (void *)sw_svc);
 +	}
  #endif
  #if defined(__i386__) || defined(__x86_64__)
@@ -35,11 +35,11 @@ diff --git a/iokit/Kernel/IOStartIOKit.cpp b/iokit/Kernel/IOStartIOKit.cpp
 -	clock_initialize_calendar();
 +	unsigned int sw_nocal = 0;
 +	if (PE_parse_boot_argn("nocal", &sw_nocal, sizeof(sw_nocal)) && sw_nocal) {
-+		printf("SWEETI 29 calendar skipped\n");
++		kprintf("SWEETI 29 calendar skipped\n");
 +	} else {
-+		printf("SWEETI 29 calendar-in\n");
++		kprintf("SWEETI 29 calendar-in\n");
 +		clock_initialize_calendar();
-+		printf("SWEETI 2A iokit-time-done\n");
++		kprintf("SWEETI 2A iokit-time-done\n");
 +	}
  }
  
