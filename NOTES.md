@@ -1,66 +1,152 @@
-### 2026-10-25 (поздняя ночь) - kprintf в DEVELOPMENT заглушён: почему r8 не показал SWEETI 27
+### 2026-10-25 — r9nro photo: allocation panic, conditional framebuffer-beacon diagnosis
 
-`0085-sweet-iokit-time-marks.patch` (чекпоинты вокруг `IOKitInitializeTime()`) собрался
-со второй попытки (первая упала на `boolean_t sw_got = IOService::waitForService(...)` -
-функция возвращает `IOService *`, теперь `IOService * sw_svc` + `%p`). CI
-`40075470803` зелёный, ядро sha256 `ec19def33d2989e4...`, образ `shim-cas-r8.img`
-sha256 `688c76707f1d9c17...`, все шесть строк-маркеров по одному разу.
+**Observed:** the new user photograph contains an original panic and boot arguments
+`ufsrw=0 sweetlog=0 nortc=1`. The main allocation message can be reconstructed as:
 
-**Наблюдение:** экран r8 **побайтово совпал с r7** - после `SWEETI 13 bufferinit-done`
-идут `bufferhdr` / `kmem_large_ranges[...]` / `"vm_compressor_mode" is 4` /
-`zone_init: pgzalloc|map VM|map RO`, и `SWEETI 27 iokit-time-in` **не появляется**.
-То есть ядро не доходит даже до первой строки `IOKitInitializeTime()`, хотя между
-`13` и вызовом этой функции в `bsd_init.c` нет ничего, кроме `bsd_init_kprintf()`.
-
-**Причина (установленный факт, не догадка):** v1 патча печатал маркеры через
-`kprintf()`, а в DEVELOPMENT-ядре он выключен компиляцией:
-`pexpert/arm/pe_kprintf.c`:
-
-```c
-SECURITY_READ_ONLY_LATE(bool) disable_kprintf_output = true;   /* только kprintf */
-#elif DEVELOPMENT
-    if (PE_parse_boot_argn("-enable_kprintf_spam", ...)) disable_kprintf_output = false;
-#endif
-...
-if (!disable_serial_output && !disable_kprintf_output) { /* печать */ }
+```text
+kmem_alloc(..., 24117248, 0x100021): failed with 3
 ```
 
-`printf()` (`osfmk/kern/printf.c`) этим флагом **не** закрыт - он идёт через
-`console_printbuf_putc` -> `console_write_char`, то есть ровно в тот канал, который
-видит наш `sweet` framebuffer console. Все предыдущие маркеры (`SWEET`, `SWEETM`,
-`SWEETI`, `SWEETB`) были `printf` и поэтому были видны. Значит "экран остановился"
-означало не смерть, а замолчавший маркер.
+The allocator name was cross-checked with the source panic format. The source helper
+is in `vm_kern.c:178`; small caller/map addresses and the photographed Kernel text
+base remain uncertain. `0x100021` agrees across two OCR passes, but is still a photo
+transcription. Raw photograph, cropped images, OCR and symbolication proof remain
+in session scratch only; do not commit device identifiers or the panic dump.
 
-**Правило на будущее:** любой диагностический вывод в этом порте - только `printf()`
-(или `-enable_kprintf_spam=1` в cmdline, но это лишний риск). В IOKit-`.cpp` объявление
-берётся локально: `extern "C" int printf(const char *fmt, ...) __printflike(1, 2);`
-(владелец объявления - `osfmk/kern/misc_protos.h`).
+**Provenance:** the photographed kernel UUID `15CF22C4-37C9-3163-9CD9-6DF899583E9A`
+matches the verified 17 206 336-byte CI kernel from run `40077013520` / source
+`1ac67c6`, SHA256 `f9cc2bfde1db03986cbf7b0a140216cbeb777b3df1684e4f20d0436cd6d005c8`.
+No new build or device operation was performed during this readout.
 
-Пересобран `0085` v2 (1668 B, 0 CR), локально `chain.sh` = **87 applied / 6 skipped**,
-`0085` APPLIED. Коммит `1ac67c6`, CI `40077013520`.
-CI `40077013520` зелёный (kernel sha256 `f9cc2bfde1db0398...`), собран и **загружен**
-образ r9: `C:\ports\shim-cas-r9.img`, 17 772 544 B, sha256 `3b70d79fc1aab1e6...`,
-payload `shim/out/payload-cas-r9.bin` (16 611 232 B), cmdline
-`debug=0xc serial=3 keepsyms=1 -v ufsrw=1 sweetlog=1 rd=ufsroot0 ufsroot=userdata`.
-Пользователь ушёл, фото экрана r9 ещё не снято - **следующее действие сессии:
-сфотографировать/прислать хвост экрана r9** (`SWEETI 27/28/29/2A`) или просто снова
-`powershell -File boot_r8.ps1 -Tag r9` и снять фото.
+**Interpretation, not a fully established root cause:** 24 117 248 bytes is exactly
+23 MiB (`0x1700000`), matching the known framebuffer allocation. Error 3 is
+`KERN_NO_SPACE`, not proof of exhausted physical RAM. In the reference XNU source,
+`io_map(..., false)` reserves VA in an 8-MiB `io_submap`; it cannot accommodate a
+23-MiB mapping. Flags `0x100021` mean NOFAIL | PAGEABLE | PERMANENT and match this
+path. Patch 0082's `sweet_ufs_beacon()` maps the entire `/sweet-fbcon/reg` with
+`ml_io_map`, even when `ufsrw=0 sweetlog=0`.
 
-Как читать r9:
+The stack explorer's normalized LRs `0xfffffe00073e431c` and
+`0xfffffe00074e7a44` match the allocation panic path and `sweet_ufs_beacon` in the
+verified binary; BL instructions immediately before those LRs target the panic
+helper and `ml_io_map`. This attribution is CONDITIONAL on correct OCR and slide=0:
+the text base is not independently readable, some other LRs yield implausible
+symbols, and the WSL reference source tree was not independently tied to CI source.
+Do not present the entire photographed backtrace as precisely decoded.
 
-- нет `27` -> смерть до входа в `IOKitInitializeTime()` (тогда следующий шаг - маркер
-  в `bsd_init` после `13` и внутри `bsd_init_kprintf`, но это уже не должно случаться,
-  т.к. `printf` работает);
-- `27`, нет `28` -> висим в `IOService::waitForService("IORTC")`; лечится boot-arg
-  `nortc=1` (пересобрать payload, CI не нужен);
-- `28` есть, нет `29` -> смерть в `clock_initialize_calendar()` до его первой строки;
-- `29`, нет `2A` -> смерть внутри `clock_initialize_calendar()`/`PEGetUTCTimeOfDay()`;
-  лечится `nocal=1`;
-- `2A` есть -> блок времени пройден, дальше смотрим `SWEETI 15/16` (`vfsinit`).
+**Next concrete action:** verify the suspect path against the exact CI source,
+then remove/no-op the unused diagnostic framebuffer mapping/writes in a new tail
+patch while retaining printf checkpoints. Do not enlarge global VM maps, change
+RAM size or invent an RTC on this evidence. Validate the patch chain and use a new
+CI artifact for the subsequent read-only temporary boot. This fix is PROPOSED,
+not implemented. No `SWEETI 14` is visible in this photo, so time/calendar completion
+and root lookup are not established by the panic alone.
 
-Оба escape-флага проверяются тем же ядром: `RID=40077013520 TAG=r9n bash build_r8.sh nortc=1 r9n`
-(аналогично `nocal=1`), затем `boot_r8.ps1 -Tag r9n`. CI пересборка не требуется.
+The baseline and packaging details below remain valid; the `r9nro` comparison is
+no longer waiting for its first photograph.
+
+### 2026-10-25 — r9: read-only RTC matrix, corrected diagnostic conclusions
+
+**Observed r9ro result:** the user supplied a 61-line console OCR on 2026-10-25.
+It contains `SWEETI 13 bufferinit-done`, then **`SWEETI 27 iokit-time-in`**, but no
+`28`, `29`, `2A`, or `14`. Entry into `IOKitInitializeTime()` is now photographed;
+the exact stop/fault point and the time elapsed before capture remain unknown.
+Do not call this a proven calendar failure or an indefinitely stuck RTC wait.
+The baseline `fastboot boot` was accepted at `2026-10-25T00:13:11.141+03:00`
+(`Sending` / `Booting` both OKAY). OKAY alone proves transfer and hand-off, not
+successful XNU/iOS boot. The new photographed checkpoint is **27**, not r8's 13.
+
+**Kernel provenance:** GitHub Actions run `40077013520`, source commit `1ac67c6`,
+artifact `xnu-kernel`; ARM64 Mach-O executable, 17 206 336 bytes, SHA256
+`f9cc2bfde1db03986cbf7b0a140216cbeb777b3df1684e4f20d0436cd6d005c8`.
+Verified against the artifact's `SHA256SUMS`, with all eight full RTC diagnostic
+strings present exactly once. No `prebuilt/` kernel was used.
+
+**Four locally packaged images (17 772 544 bytes each):**
+
+| Image under `C:\ports\` | RTC arguments | Image SHA256 prefix |
+| --- | --- | --- |
+| `shim-cas-r9ro.img` | normal RTC wait + calendar | `1f4d5794cf5fe31f` |
+| `shim-cas-r9nro.img` | `nortc=1` | `3de474c8ffa2afbe` |
+| `shim-cas-r9cro.img` | `nocal=1` | `7d2181aabfd79646` |
+| `shim-cas-r9ncro.img` | `nortc=1 nocal=1` | `779e16ccb9950429` |
+
+All four use
+`debug=0xc serial=3 keepsyms=1 -v ufsrw=0 sweetlog=0 rd=ufsroot0 ufsroot=userdata`
+plus the listed RTC arguments. **UFS data writes are disabled** by the existing
+`0030` write gate; persistent `sweetlog` is deliberately disabled for these tests.
+Do not infer a kernel fault from an empty persistent ring in these read-only boots.
+
+Construction was deliberately deterministic: parsed the known r9 boot image
+(`3b70d79fc1aab1e6...`), reproduced its complete SWEETXNU payload from the CI Mach-O
+and current `cas.adt`, then changed **only** bytes `0x48..0x2a7` (608-byte cmdline).
+Repacked with `mkbootimg`; checked that shim, DTB, all other payload bytes and
+boot-header address/version fields stayed identical. No shim source rebuild or
+new CI run was required. Payloads: `shim/out/payload-cas-r9{ro,nro,cro,ncro}.bin`.
+
+Session scratch contains `make_r9_matrix.py`, `r9-ro-matrix/<tag>.json` (full
+hashes), and `boot_probe.ps1`. Launch the boot helper **detached**, with
+`-Tag r9ro` / `r9nro` / `r9cro` / `r9ncro`. It verifies the manifest, targets an
+exact device-row serial, uses bounded native commands, and sends only
+`fastboot boot` (never flash/erase/format). Old `boot_r8.ps1` / `boot_r9.ps1` are
+deprecated: their `recovery|device` regex also matched the adb list header.
+The new native wrapper passed offline checks for correct/wrong serial, exit 0,
+exit 7, timeout (child killed in 1.03 s), and rejection of unsupported arguments.
+
+**Correction to earlier r8 conclusions:** r8's photographed checkpoint sequence
+resembled r7, but the OCR dumps were **not byte-identical** (addresses and OCR
+differ). Missing `SWEETI 27` did not establish that the function was never entered.
+r8 used `kprintf`; in DEVELOPMENT `disable_kprintf_output` defaults to true and
+is cleared by `-enable_kprintf_spam`. This is a **runtime output gate**, not proof
+that the function was compiled away (the strings were present in the binary).
+r9/0085 v2 uses `printf`, the already observed console channel. That repairs the
+instrumentation; it does **not** establish where the kernel stops or whether it
+continues. Likewise, missing adb/fastboot is not proof of a hang or crash.
+
+**Read-only comparison:** `r9nro` (`nortc=1`, calendar enabled) has now produced a
+photographed allocation panic; see the newer evidence block above. Preserve this
+capture before further boots. The RTC/calendar return checkpoint 14 is not visible.
+Missing text remains subject to console visibility/flush:
+
+- `27` but no `28`: last visible point precedes resource matching / RTC wait;
+  compare `nortc=1`. Normal absent-resource sleep is 30 s, but registry locks and
+  lock reacquisition are not bounded by that deadline. This is not a permanent fix.
+- `28` but no `29`: gap before the calendar marker (boot-arg parsing/output is
+  also here); **do not claim entry into calendar**, since `29` precedes the call.
+- `29 calendar-in` but no `2A`: calendar path is the next suspect; compare
+  `nocal=1` and the function-return checkpoint `14`.
+- `29 calendar skipped` with no `2A` is expected in current 0085: `2A` lives only
+  in the non-skipped branch. Use `14 iokit-time-done` to confirm function return.
+- `14` confirms time initialization returned; next are `15/16` (`vfsinit`), then
+  the remaining `SWEETI`/`SWEETM` checkpoints. No `27` is inconclusive without
+  confirming the new image and the console path; instrument the caller if needed.
+
+**Read-only source triage (explorer report, 2026-10-25):** `IORTC` matching is an
+`IOResources` property, not a required RTC-object dereference. A missing resource
+normally yields a null service result after the timed sleep. SWEET inherits
+`IOPlatformExpert`'s zero-valued UTC fallback; `clock_initialize_calendar()`
+explicitly accommodates RTC time behind boot uptime. Therefore, an absent RTC
+does **not by itself** explain a crash, and zero UTC is not real wall-clock time.
+The wait sleeps a kernel thread: CNTV timer -> GIC Group-1 IRQ -> `sleh_irq` ->
+`rtclock_intr` -> timer expiry -> thread wake/rescheduling. Reading a working
+counter does not establish timer interrupt delivery. If `nortc` reaches 14,
+instrument the wait/deadline/lock region next; do not blindly change GIC settings
+or invent an RTC. `nocal` alone retains the wait and is only useful for a later
+calendar-specific differential. No underlying kernel fix is justified yet.
+
+Earlier build sequence: `4eb6fe1`/CI `40074368110` failed because waitForService
+returns `IOService *`, not `boolean_t`; `3fe0e65`/CI `40075470803` built r8 using
+kprintf (kernel `ec19def33d2989e4...`, image `688c76707f1d9c17...`); `1ac67c6`
+changed the diagnostics to printf. Local full patch-chain validation at that
+milestone was **87 applied / 6 skipped**, `0085` APPLIED, no CRLF in that patch.
+The retained `shim/loader.c` +2-line working-tree change predates this turn and
+must not be accidentally staged along with documentation.
+
 ---
+**Historical journal below:** earlier diagnoses, writable boot commands and
+framebuffer interpretations are retained as history, not current instructions.
+Use the active read-only experiment and evidence rules above instead.
+
 ### 2026-10-25 (ночь) - r6 booted: SWEETM prints shipped, framebuffer marks definitively dead
 
 Round after `0082`: the marks never showed up on the panel, so the open question is
