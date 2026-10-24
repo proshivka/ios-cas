@@ -9,22 +9,33 @@ diff --git a/iokit/Kernel/IOStartIOKit.cpp b/iokit/Kernel/IOStartIOKit.cpp
  
  #include "IOKitKernelInternal.h"
  
-@@ -77,17 +78,31 @@
+@@ -69,6 +70,10 @@
+ #include <kern/clock.h>
+ #include <sys/time.h>
+ 
++/* printf() is what the SWEET framebuffer console actually sees; kprintf() is
++ * compiled out in DEVELOPMENT unless -enable_kprintf_spam is passed. */
++extern "C" int printf(const char *fmt, ...) __printflike(1, 2);
++
+ void
+ IOKitInitializeTime( void )
+ {
+@@ -77,17 +82,31 @@
  	t.tv_sec = 30;
  	t.tv_nsec = 0;
  
-+	kprintf("SWEETI 27 iokit-time-in\n");
++	printf("SWEETI 27 iokit-time-in\n");
  // RTC is not present on this target
  #ifndef BCM2837
 -	IOService::waitForService(
 -		IOService::resourceMatching("IORTC"), &t );
 +	unsigned int sw_nortc = 0;
 +	if (PE_parse_boot_argn("nortc", &sw_nortc, sizeof(sw_nortc)) && sw_nortc) {
-+		kprintf("SWEETI 28 rtc-wait skipped\n");
++		printf("SWEETI 28 rtc-wait skipped\n");
 +	} else {
 +		IOService * sw_svc = IOService::waitForService(
 +			IOService::resourceMatching("IORTC"), &t );
-+		kprintf("SWEETI 28 rtc-wait ret %p\n", (void *)sw_svc);
++		printf("SWEETI 28 rtc-wait ret %p\n", (void *)sw_svc);
 +	}
  #endif
  #if defined(__i386__) || defined(__x86_64__)
@@ -35,11 +46,11 @@ diff --git a/iokit/Kernel/IOStartIOKit.cpp b/iokit/Kernel/IOStartIOKit.cpp
 -	clock_initialize_calendar();
 +	unsigned int sw_nocal = 0;
 +	if (PE_parse_boot_argn("nocal", &sw_nocal, sizeof(sw_nocal)) && sw_nocal) {
-+		kprintf("SWEETI 29 calendar skipped\n");
++		printf("SWEETI 29 calendar skipped\n");
 +	} else {
-+		kprintf("SWEETI 29 calendar-in\n");
++		printf("SWEETI 29 calendar-in\n");
 +		clock_initialize_calendar();
-+		kprintf("SWEETI 2A iokit-time-done\n");
++		printf("SWEETI 2A iokit-time-done\n");
 +	}
  }
  
