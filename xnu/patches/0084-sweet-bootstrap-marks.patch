@@ -1,0 +1,125 @@
+diff --git a/osfmk/kern/startup.c b/osfmk/kern/startup.c
+--- a/osfmk/kern/startup.c
++++ b/osfmk/kern/startup.c
+@@ -653,6 +653,7 @@
+ #if MACH_KDP
+ 	kernel_bootstrap_log("kdp_init");
+ 	kdp_init();
++	printf("SWEETB 1 kdp_init-done\n");
+ #endif
+ 
+ #if ALTERNATE_DEBUGGER
+@@ -685,8 +686,10 @@
+ 	vm_kernel_addrhash_salt_ext = early_random();
+ 
+ #ifdef  IOKIT
++	printf("SWEETB 2 PE_init_iokit-in\n");
+ 	kernel_bootstrap_log("PE_init_iokit");
+ 	PE_init_iokit();
++	printf("SWEETB 3 PE_init_iokit-done\n");
+ #endif
+ 
+ 	assert(ml_get_interrupts_enabled() == FALSE);
+@@ -787,7 +790,9 @@
+ 	 *	Start the user bootstrap.
+ 	 */
+ #ifdef  MACH_BSD
++	printf("SWEETB 4 calling-bsd_init\n");
+ 	bsd_init();
++	printf("SWEETB 5 bsd_init-returned\n");
+ #endif
+ 
+ 
+diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
+--- a/bsd/kern/bsd_init.c
++++ b/bsd/kern/bsd_init.c
+@@ -569,6 +569,7 @@
+ 	 * Initialize the MAC Framework
+ 	 */
+ 	mac_policy_initbsd();
++	printf("SWEETI 11 mac_policy_initbsd-done\n");
+ 
+ #if defined (__i386__) || defined (__x86_64__)
+ 	/*
+@@ -680,17 +681,22 @@
+ 	 *		the kernel task.
+ 	 */
+ 	bsd_init_kprintf("calling bsd_bufferinit\n");
++	printf("SWEETI 12 bufferinit-in\n");
+ 	bsd_bufferinit();
++	printf("SWEETI 13 bufferinit-done\n");
+ 
+ 	/*
+ 	 * Initialize the calendar.
+ 	 */
+ 	bsd_init_kprintf("calling IOKitInitializeTime\n");
+ 	IOKitInitializeTime();
++	printf("SWEETI 14 iokit-time-done\n");
+ 
+ 	/* Initialize the file systems. */
+ 	bsd_init_kprintf("calling vfsinit\n");
++	printf("SWEETI 15 vfsinit-in\n");
+ 	vfsinit();
++	printf("SWEETI 16 vfsinit-done\n");
+ 
+ #if defined(ARM64_BOARD_CONFIG_SWEET)
+ 	/* AMFI's MAC policy is built in on SWEET (bsd/kern/sweet_amfi.c). */
+@@ -717,6 +723,7 @@
+ 	/* Initialize mbuf's. */
+ 	bsd_init_kprintf("calling mbinit\n");
+ 	mbinit();
++	printf("SWEETI 17 mbinit-done\n");
+ 	restricted_in_port_init();
+ #endif /* SOCKETS */
+ 
+@@ -732,6 +739,7 @@
+ 	/* Initialize kqueues */
+ 	bsd_init_kprintf("calling knote_init\n");
+ 	knote_init();
++	printf("SWEETI 18 knote_init-done\n");
+ 
+ 	/* Initialize event handler */
+ 	bsd_init_kprintf("calling eventhandler_init\n");
+@@ -740,6 +748,7 @@
+ 	/* Initialize for async IO */
+ 	bsd_init_kprintf("calling aio_init\n");
+ 	aio_init();
++	printf("SWEETI 19 aio_init-done\n");
+ 
+ 	pthread_init();
+ 	/* POSIX Shm and Sem */
+@@ -760,9 +769,12 @@
+ #endif /* NETWORKING */
+ #if SOCKETS
+ 	bsd_init_kprintf("calling socketinit\n");
++	printf("SWEETI 20 socketinit-in\n");
+ 	socketinit();
++	printf("SWEETI 21 socketinit-done\n");
+ 	bsd_init_kprintf("calling domaininit\n");
+ 	domaininit();
++	printf("SWEETI 22 domaininit-done\n");
+ 	iptap_init();
+ #if FLOW_DIVERT
+ 	flow_divert_init();
+@@ -771,6 +783,7 @@
+ #if SKYWALK
+ 	bsd_init_kprintf("calling skywalk_init\n");
+ 	(void) skywalk_init();
++	printf("SWEETI 23 skywalk_init-done\n");
+ #endif /* SKYWALK */
+ #if NETWORKING
+ #if NECP
+@@ -793,10 +806,13 @@
+ 	/* Initialize kernel memory status notifications */
+ 	bsd_init_kprintf("calling memorystatus_init\n");
+ 	memorystatus_init();
++	printf("SWEETI 24 memorystatus_init-done\n");
+ #endif /* CONFIG_MEMORYSTATUS */
+ 
+ 	bsd_init_kprintf("calling sysctl_mib_init\n");
++	printf("SWEETI 25 sysctl_mib_init-in\n");
+ 	sysctl_mib_init();
++	printf("SWEETI 26 sysctl_mib_init-done\n");
+ 
+ 	bsd_init_kprintf("calling bsd_autoconf\n");
+ 	bsd_autoconf();
