@@ -1,64 +1,60 @@
-## === АКТУАЛЬНО НА 2026-10-25: фото r9nro с allocation panic, читать NOTES.md первым ===
+## === АКТУАЛЬНО НА 2026-10-25: r10 / 0086 проверен локально, следующий gate — точный CI ===
 
 **Задача:** настоящее CI-ядро XNU на Mi 10 Ultra (cas/SM8250), затем iOS 16.7.16.
-Подтверждённый новый фото-рубеж — **`SWEETI 27 iokit-time-in` в r9ro** после BSD init.
-В полученном OCR (61 строка) нет 28/29/2A/14; время до снимка не указано.
-Вход в функцию времени подтверждён, но вечное ожидание/причина сбоя — нет.
-Отсутствие USB у XNU само по себе не отличает работу ядра от зависания/падения.
+Подтверждённый фото-рубеж r9ro — **`SWEETI 27 iokit-time-in`** после BSD init.
+Нет надёжно подтверждённых 28/29/2A/14. Отсутствие USB не доказывает зависание.
 
-**Новый снимок r9nro:** в boot args видны `ufsrw=0 sweetlog=0 nortc=1`; основной
-текст восстанавливается как `kmem_alloc(..., 24117248, 0x100021): failed with 3`.
-Это **23 МиБ**, ошибка **KERN_NO_SPACE**, не доказанная нехватка физической RAM.
-UUID ядра на фото совпал с проверенным CI-бинарником ниже. Точные caller/map
-адреса и Kernel text base не прочитаны надёжно; полного доказанного стека нет.
-Два explorer-разбора сходятся на кандидате `sweet_ufs_beacon` из 0082: он вызывает
-`ml_io_map` для всего `/sweet-fbcon/reg` даже при выключенных UFS write/sweetlog.
-В справочном исходнике этот путь использует 8-МиБ `io_submap`, меньше запроса 23 МиБ.
-Связь с фотостеком пока условна (OCR + предположение slide=0); привязка WSL-tree
-к точному CI-source отдельно не проверена. **Причина ещё не окончательно доказана.**
-`SWEETI 14` на снимке не виден: не заявлять прохождение времени/календаря или root
-lookup. Само `nortc=1` не является готовым исправлением. Снимок/OCR/proof только
-в scratch, без raw panic и идентификаторов устройства в git. В этом разборе новых
-сборок, загрузок и операций с телефоном не было.
+**r9nro:** снимок с `ufsrw=0 sweetlog=0 nortc=1` содержит allocation panic,
+запрос 23 МиБ и KERN_NO_SPACE. Это не доказанная нехватка физической RAM.
+Кандидат — диагностический `sweet_ufs_beacon()` из 0082/0083: безусловный
+`ml_io_map` всего advertised `/sweet-fbcon/reg` в 8-МиБ `io_submap`.
+Связь с фотостеком остаётся условной (OCR/slide); весь стек точно не декодирован.
 
-**Текущее ядро:** CI `40077013520`, исходный коммит `1ac67c6`, SHA256
+**Исправление реализовано:** новый tail-патч `0086-sweet-disable-fb-beacon.patch`
+оставляет hook пустым, сохраняя C ABI и SWEET guard. Ни mapping, ни framebuffer
+записей в нём больше нет. Патчи 0082–0085, printf-метки и UFS write gate не менялись.
+Не возвращать невидимые framebuffer-метки, не увеличивать VM-карты/RAM и не
+добавлять RTC на основании этого снимка.
+
+**Точный baseline-source проверен:** CI `40077013520`, коммит
+`1ac67c64b73b9c999553a6f065d4be19eba6c73b`, buildtree artifact `12553588472`.
+Шесть ключевых файлов из него побайтно совпали с isolated r9 replay, включая
+`sweet_ufs.c`, `io_map.c`, `machine_routines.c` и printf/caller-файлы.
+Архив/полные хеши и JSON-проверки в session scratch и NOTES.md.
+Ядро baseline: 17 206 336 байт, SHA256
 `f9cc2bfde1db03986cbf7b0a140216cbeb777b3df1684e4f20d0436cd6d005c8`.
-Патч `0085` v2 печатает `SWEETI 27/28/29/2A` через **printf** и позволяет
-`nortc=1` / `nocal=1`. Все строки проверены в бинарнике; предыдущая локальная
-проверка цепочки: **87 applied / 6 skipped**, `0085` APPLIED.
 
-**Новые безопасные образы уже готовы** (`C:\ports\`, все без записи UFS):
-`shim-cas-r9ro.img` — baseline; `shim-cas-r9nro.img` — `nortc=1`;
-`shim-cas-r9cro.img` — `nocal=1`; `shim-cas-r9ncro.img` — оба флага.
-Общие флаги `ufsrw=0 sweetlog=0`; shim/DTB/ядро не менялись, только cmdline payload.
-Полные проверки происхождения/хеши и результаты тестов записаны в NOTES.md.
+**Проверки выполнены:** baseline 87 applied / 6 expected skipped;
+working tree с 0086 — **88 applied / 6 expected skipped**, 0086 APPLIED.
+Изменения только в hook/comment; standalone ARM64 compile actual hook даёт `ret`.
+Независимый reviewer не нашёл подтверждённых дефектов. Replay не включает staging
+scripts/MIG substitutions dxb, поэтому это ещё не полная проверка CI-бинарника.
 
-**Baseline:** `fastboot boot r9ro` принят в `00:13:11 +03:00`; OCR уже получен:
-13 -> 27, далее новых маркеров нет. Не выдавать OKAY fastboot за загрузку iOS.
-**Следующий шаг:** сверить подозреваемый beacon с точным CI-source, затем отдельным
-tail-патчем убрать неиспользуемый framebuffer mapping/записи, оставив printf-метки.
-Исправление пока не сделано; проверить patch chain, новый CI-артефакт и read-only boot.
-Отсутствующий IORTC даёт null после ожидания; SWEET имеет безопасный нулевой UTC
-fallback. Чтение счётчика не доказывает доставку таймерного IRQ. `nocal` отдельно
-не отменяет RTC wait. Каждый новый экран сфотографировать до следующего reboot.
+**Следующий gate:** закоммитить только 0086 + NOTES/HANDOFF и отправить на main;
+push патча сам запускает `xnu`. Зафиксировать полный commit/run ID. Дождаться
+успеха именно этого run, сравнить его buildtree `sweet_ufs.c` с frozen replay,
+проверить SHA256/ARM64 Mach-O, inert linked beacon и printf-строки. Артефакт может
+публиковаться даже после failure. Новый r10 CI/image/boot ещё не подтверждён.
 
-**Скрипты в scratch текущей сессии:** `make_r9_matrix.py` и `boot_probe.ps1`.
-Запуск boot_probe делать detached с `-Tag r9ro|r9nro|r9cro|r9ncro`; новый helper
-проверяет хеш/readonly cmdline, точный serial и тайм-ауты. Старые boot_r8/boot_r9
-имеют ошибку regex (матчат заголовок списка adb) и больше не используются.
+**Первое сравнение r10nro:**
+`debug=0xc serial=3 keepsyms=1 -v ufsrw=0 sweetlog=0 rd=ufsroot0 ufsroot=userdata nortc=1`.
+Без `nocal` — календарь включён. Donor `C:\ports\shim-cas-r9nro.img`, SHA256
+`3de474c8ffa2afbe8ee711bce0c851839f784d4c6e8650aa0ee280e263851184`.
+Сохранить shim/DTB/embedded ADT и память **0xb0000000 / 0x4cf00000**.
+Не запускать старый make_r9_matrix для r10 (top-level overwrites) или shim/build.sh.
+Сначала воспроизвести donor payload старым pinned CI-ядром, затем упаковать новое.
+Новые helpers только в scratch; проверить их до операции с телефоном.
 
-**Важно для диагностики:** kprintf в DEVELOPMENT закрыт runtime-флагом, не
-«скомпилирован в ничто». Исправление на printf устраняет слепой маркер, но не
-доказывает, что ядро проскочило блок времени. `29 calendar skipped` без `2A`
-нормален (в этой ветке 2A нет); проверять `14`, означающий возврат функции.
-`28` без `29` не доказывает вход в calendar: маркер 29 стоит перед вызовом.
-Старые утверждения про побайтовое совпадение r7/r8 и доказанную смерть исправлены.
+**После временной загрузки:** сохранить фото до следующего reboot. Проверять
+исчезновение allocation panic, `SWEETI 14` и последующие root checkpoints.
+SWEETM 63 при sweetlog=0 не ожидается. OKAY fastboot не означает загрузку iOS.
+`nortc=1` сам по себе не исправление RTC; после этого сравнения отдельно проверить
+обычный RTC-путь. kprintf в DEVELOPMENT закрыт runtime gate, не compiled away.
 
-**Ограничения:** только `fastboot boot`, без flash/erase/format и изменения GPT.
-Любые разрушительные записи требуют отдельного подтверждения. Не развивать
-невидимые framebuffer-метки; канал наблюдения — фотографируемый текст консоли.
-Не возобновлять UEFI/HackiOS, не использовать prebuilt-ядра, не класть дампы в git.
-Оставшийся +2 diff в shim/loader.c возник раньше — не включать его случайно в коммит.
+**Ограничения:** только `fastboot boot`, без flash/erase/format/GPT и UFS data writes.
+Любой разрушительный шаг — отдельное подтверждение. Не класть serials/dumps/Apple
+артефакты/секреты в git. Сохранить backups/bootloader/recovery/modem/persist.
+Посторонний +2 diff в shim/loader.c и line-ending noise не включать в коммит.
 
 ---
 

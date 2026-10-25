@@ -1,3 +1,57 @@
+### 2026-10-25 — r10: allocation-free framebuffer beacon; source/local checks PASS, CI next
+
+**Implemented:** new tail patch `0086-sweet-disable-fb-beacon.patch` replaces only
+the legacy `sweet_ufs_beacon()` comment/body with an argument-discarding no-op.
+The external C signature and SWEET board guard remain intact. No DT lookup,
+`ml_io_map`, framebuffer store or barrier remains in this hook. Existing patches
+0082–0085 and their **printf** checkpoints are unchanged; UFS MMIO/write gates
+are not altered. Do not reinstate invisible framebuffer diagnostics.
+
+**Exact-source provenance is now checked:** GitHub Actions run `40077013520`
+completed successfully at full source `1ac67c64b73b9c999553a6f065d4be19eba6c73b`.
+Downloaded its `xnu-buildtree` artifact `12553588472` into session scratch;
+`buildtree.tgz` SHA256 is
+`3cf7b495ebc3c04e0ac69aee1042b7a414677ba6a173ca8288c65b769c213c91`.
+Its `sweet_ufs.c`, ARM `io_map.c`, ARM64 `machine_routines.c`, `IOStartIOKit.cpp`,
+`IOKitBSDInit.cpp` and `bsd_init.c` match the isolated r9 replay byte-for-byte.
+This validates the source-level 23-MiB advertised mapping vs 8-MiB `io_submap`
+mechanism, not an independently decoded photographed backtrace or successful fix.
+
+**Completed validation:**
+- Isolated baseline `1ac67c6`: **87 applied / 6 expected skipped**.
+- Fresh working-tree replay: **88 applied / 6 expected skipped**, explicit
+  `0086 APPLIED`; 0082–0085 and the 0030 write gate also applied.
+- Pre-0086 `sweet_ufs.c` equals the exact CI source, SHA256
+  `c7468bfd90345c10e9c288638744a1cba8df449db43c944dc474db65a43843b6`.
+- Post-0086 source SHA256
+  `016c3d9140c2967512e8aca23ce1ccad7b4f7fd357d8b2ff6a6620a8f78cfe9a`;
+  comparison confirms changes only to the hook/comment and unchanged VM/callers.
+- Standalone ARM64 `-O2 -Wall -Wextra -Werror` compile of the actual patched hook
+  emits a single `ret`. This is **not** verification of the linked CI kernel.
+- Independent read-only code review found no confirmed defect. Local replay
+  omits dxb staging scripts/MIG substitutions; its counts are not full CI parity.
+
+**Next gates, not yet completed:** commit only 0086 and these active notes/handoff,
+push to trigger the existing `xnu` workflow, then require a successful run bound
+to that full commit. Compare same-run buildtree `sweet_ufs.c` with the frozen
+replay, verify kernel SHA256/ARM64 Mach-O, retained printf strings and inert linked
+beacon. Upload-artifact steps also run after failure, so an artifact alone is not
+a successful build. No new r10 CI artifact, published image or boot is claimed yet.
+
+**First device comparison:** `r10nro`, exactly
+`debug=0xc serial=3 keepsyms=1 -v ufsrw=0 sweetlog=0 rd=ufsroot0 ufsroot=userdata nortc=1`.
+Calendar remains enabled (no `nocal`). Preserve r9nro's shim, DTB, embedded ADT and
+actual payload memory **base `0xb0000000`, size `0x4cf00000`**, not old examples.
+Reproduce the donor payload with its pinned old CI kernel before repacking the
+new one. Only publish a fully checked image. New packaging/boot helpers live in
+session scratch and must be independently checked before any device operation.
+Only temporary `fastboot boot`; no flash/erase/format/GPT or UFS data writes.
+Photograph the new console before another reboot; OKAY proves only hand-off.
+`SWEETI 14` and later root checkpoints are still unconfirmed on a new image.
+Keep dumps/serials/secrets out of git; retain the pre-existing +2 loader diff.
+
+---
+
 ### 2026-10-25 — r9nro photo: allocation panic, conditional framebuffer-beacon diagnosis
 
 **Observed:** the new user photograph contains an original panic and boot arguments
@@ -31,16 +85,15 @@ The stack explorer's normalized LRs `0xfffffe00073e431c` and
 verified binary; BL instructions immediately before those LRs target the panic
 helper and `ml_io_map`. This attribution is CONDITIONAL on correct OCR and slide=0:
 the text base is not independently readable, some other LRs yield implausible
-symbols, and the WSL reference source tree was not independently tied to CI source.
+symbols, and during that photo readout the WSL reference source was not tied to CI.
 Do not present the entire photographed backtrace as precisely decoded.
 
-**Next concrete action:** verify the suspect path against the exact CI source,
-then remove/no-op the unused diagnostic framebuffer mapping/writes in a new tail
-patch while retaining printf checkpoints. Do not enlarge global VM maps, change
-RAM size or invent an RTC on this evidence. Validate the patch chain and use a new
-CI artifact for the subsequent read-only temporary boot. This fix is PROPOSED,
-not implemented. No `SWEETI 14` is visible in this photo, so time/calendar completion
-and root lookup are not established by the panic alone.
+**Action status:** the proposed exact-source verification and allocation-free tail
+patch are now implemented and locally validated in the newer r10 entry above.
+The photographed stack attribution remains conditional. Do not enlarge global VM
+maps, change RAM size or invent an RTC on this evidence. A new, verified CI kernel
+and read-only temporary boot remain separate acceptance gates. No `SWEETI 14` is
+visible in this photo; time/calendar completion and root lookup are not established.
 
 The baseline and packaging details below remain valid; the `r9nro` comparison is
 no longer waiting for its first photograph.

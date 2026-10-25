@@ -1,0 +1,64 @@
+diff --git a/bsd/dev/sweet_ufs.c b/bsd/dev/sweet_ufs.c
+--- a/bsd/dev/sweet_ufs.c
++++ b/bsd/dev/sweet_ufs.c
+@@ -938,54 +938,17 @@
+ }
+ 
+ /*
+- * SWEET_0082 bring-up mark: a 32x32 square at (8 + stage * 40, 2300).
++ * Legacy framebuffer beacon kept as an allocation-free compatibility hook.
+  *
+- * Needs no console, no UFS, no IOKit and nothing is ever cleared, so after the
+- * device gives up the row of colours is the only record of how far it got.
++ * Text checkpoints are printed by the callers. The framebuffer writes were
++ * not visible on cas, and ml_io_map() cannot map its 23 MiB framebuffer in the
++ * 8 MiB io_submap. Do not allocate VA or write display memory from this hook.
+  */
+ void
+ sweet_ufs_beacon(unsigned int stage, unsigned int color)
+ {
+-	static volatile unsigned int *fb;
+-	unsigned int x0, y0, x, y;
+-
+-	if (fb == NULL) {
+-		DTEntry node;
+-		uintptr_t const *reg = NULL;
+-		unsigned int size = 0;
+-
+-		if (SecureDTLookupEntry(NULL, "/sweet-fbcon", &node) != kSuccess ||
+-		    SecureDTGetProperty(node, "reg", (void const **)&reg, &size) != kSuccess ||
+-		    size < 2 * sizeof(uintptr_t)) {
+-			return;
+-		}
+-		fb = (volatile unsigned int *)ml_io_map(reg[0], reg[1]);
+-		if (fb == NULL) {
+-			return;
+-		}
+-	}
+-	x0 = 8 + stage * 40;
+-	y0 = 2340 - 40;
+-	for (y = y0; y < y0 + 32; y++) {
+-		volatile unsigned int *line = fb + y * 1080 + x0;
+-		for (x = 0; x < 32; x++) {
+-			line[x] = color;
+-		}
+-	}
+-	/*
+-	 * A 900x80 bar per stage in the lower half. The console only draws
+-	 * at the top, so a bar that appears proves the framebuffer path
+-	 * works even if the bottom row is outside the visible area.
+-	 */
+-	x0 = 90;
+-	y0 = 1400 + stage * 120;
+-	for (y = y0; y < y0 + 80; y++) {
+-		volatile unsigned int *line = fb + y * 1080 + x0;
+-		for (x = 0; x < 900; x++) {
+-			line[x] = color;
+-		}
+-	}
+-	__asm__ volatile("dsb sy" ::: "memory");
++	(void)stage;
++	(void)color;
+ }
+ 
+ #endif /* ARM64_BOARD_CONFIG_SWEET */
