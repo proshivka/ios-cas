@@ -1,4 +1,4 @@
-### 2026-10-25 — r10: allocation-free framebuffer beacon; source/local checks PASS, CI next
+### 2026-10-25 — r10: 0086 committed; exact-source/frozen checks PASS, CI 40173696413 queued
 
 **Implemented:** new tail patch `0086-sweet-disable-fb-beacon.patch` replaces only
 the legacy `sweet_ufs_beacon()` comment/body with an argument-discarding no-op.
@@ -31,12 +31,22 @@ mechanism, not an independently decoded photographed backtrace or successful fix
 - Independent read-only code review found no confirmed defect. Local replay
   omits dxb staging scripts/MIG substitutions; its counts are not full CI parity.
 
-**Next gates, not yet completed:** commit only 0086 and these active notes/handoff,
-push to trigger the existing `xnu` workflow, then require a successful run bound
-to that full commit. Compare same-run buildtree `sweet_ufs.c` with the frozen
-replay, verify kernel SHA256/ARM64 Mach-O, retained printf strings and inert linked
-beacon. Upload-artifact steps also run after failure, so an artifact alone is not
-a successful build. No new r10 CI artifact, published image or boot is claimed yet.
+**Commit/CI milestone:** implementation commit
+`4cd53c45a8c046730d15c421d379e973672209be` is pushed and verified on remote main.
+Frozen replay of this exact commit also passed **88 applied / 6 expected skipped**
+and produced the same post-0086 source hash. No automatic push run was found in
+the observed lookup window; one explicit `gh workflow run` was requested with
+13.5 / DEVELOPMENT / SWEET / keep_going=true. Run **`40173696413`** was then
+confirmed queued at the exact head SHA (workflow_dispatch):
+https://github.com/proshivka/ios-cas/actions/runs/40173696413
+The absence of the automatic run is an observation, not a diagnosed CI cause.
+
+**Next gates:** complete that run, compare its buildtree `sweet_ufs.c` with
+`r10-verify-frozen-4cd53c45a8c0/xnu`, then verify kernel SHA256/ARM64 Mach-O,
+retained printf strings and inert linked beacon. Local/frozen compile checks do
+not replace this. Artifact uploads also run after failure. No successful r10
+build, published image or boot is claimed at this milestone. Documentation-only
+follow-up commits must not change the frozen source recorded for this CI run.
 
 **First device comparison:** `r10nro`, exactly
 `debug=0xc serial=3 keepsyms=1 -v ufsrw=0 sweetlog=0 rd=ufsroot0 ufsroot=userdata nortc=1`.

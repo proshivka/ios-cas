@@ -1,4 +1,4 @@
-## === АКТУАЛЬНО НА 2026-10-25: r10 / 0086 проверен локально, следующий gate — точный CI ===
+## === АКТУАЛЬНО НА 2026-10-25: r10 / 0086 = 4cd53c4; CI 40173696413 запущен ===
 
 **Задача:** настоящее CI-ядро XNU на Mi 10 Ultra (cas/SM8250), затем iOS 16.7.16.
 Подтверждённый фото-рубеж r9ro — **`SWEETI 27 iokit-time-in`** после BSD init.
@@ -30,11 +30,18 @@ working tree с 0086 — **88 applied / 6 expected skipped**, 0086 APPLIED.
 Независимый reviewer не нашёл подтверждённых дефектов. Replay не включает staging
 scripts/MIG substitutions dxb, поэтому это ещё не полная проверка CI-бинарника.
 
-**Следующий gate:** закоммитить только 0086 + NOTES/HANDOFF и отправить на main;
-push патча сам запускает `xnu`. Зафиксировать полный commit/run ID. Дождаться
-успеха именно этого run, сравнить его buildtree `sweet_ufs.c` с frozen replay,
-проверить SHA256/ARM64 Mach-O, inert linked beacon и printf-строки. Артефакт может
-публиковаться даже после failure. Новый r10 CI/image/boot ещё не подтверждён.
+**Коммит/CI:** `4cd53c45a8c046730d15c421d379e973672209be` отправлен и проверен на
+remote main; frozen replay этого SHA также **88/6**, source hash тот же.
+Авто-run push не найден в наблюдавшемся окне; через gh выполнен один явный
+workflow_dispatch с 13.5 / DEVELOPMENT / SWEET / keep_going=true.
+CI **`40173696413`**, исходный SHA совпал, первый подтверждённый статус queued:
+https://github.com/proshivka/ios-cas/actions/runs/40173696413
+Не dispatch повторно и не путать последующие docs-only SHA с исходниками ядра.
+
+**Следующий gate:** дождаться успеха именно этого run, проверить SHA256/ARM64
+Mach-O, inert linked beacon, printf-строки и побайтное совпадение buildtree
+`sweet_ufs.c` с `r10-verify-frozen-4cd53c45a8c0/xnu`. Artifact uploads бывают и при
+failure. Успешный r10 build/image/boot на этом milestone ещё не подтверждён.
 
 **Первое сравнение r10nro:**
 `debug=0xc serial=3 keepsyms=1 -v ufsrw=0 sweetlog=0 rd=ufsroot0 ufsroot=userdata nortc=1`.
