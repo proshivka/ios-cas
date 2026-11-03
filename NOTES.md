@@ -1,3 +1,312 @@
+### 2026-11-02 — r12: instrument UFS root lookup and keep early polling runnable
+
+**New r11 console observation:** the user supplied `SWEETM 31 IOKitBSDInit ret 0`,
+post-autoconfiguration SWEETP output through `16 inittodr-done`, then
+`SWEETM 40 setconf`, `50 IOFindBSDRoot`, `64 sweet_ufs_rootdev`, `60 sweet_ufs_init`
+and `61 ufs_take_over_host ret 0`. They reported no further visible progress and
+manually rebooted the phone. The pasted tail repeats older output after these
+lines; its order is not a second initialization trace. Console visibility and
+elapsed time are unknown. UFS host takeover returned success; successful SCSI,
+GPT lookup, root mount and userland are not established.
+
+**Candidate:** `0088-sweet-ufs-poll-root-marks.patch` applies to the exact accepted
+r11 `bsd/dev/sweet_ufs.c`. It adds 19 SWEETU printf formats around the first SCSI
+command, cache handling, doorbell polling, TEST UNIT READY and GPT reads. The
+poll heartbeat is limited to one sample, including when the clock counter stalls.
+The non-sleeping polling branch uses ARM YIELD instead of `delay(1)` because the
+XNU delay path may block or enter WFE. This is a targeted diagnostic candidate;
+the new runtime stop point and the effectiveness of this change still need proof.
+The existing sleepable guard, timeout, barriers, MMIO write order, UFS data-write
+gate and inert framebuffer beacon are preserved.
+
+**Completed checks:** exact-source patch check/application and independent replay
+match the generated candidate byte-for-byte. All 18 protected functions and
+existing printf formats are unchanged. Independent read-only review PASS after
+the heartbeat counter was made saturating. Final saved report:
+`C:\ports\r12-rootdiag\source-check-r12.json` (2026-11-02 20:23:04 UTC).
+
+```text
+base source: 016c3d9140c2967512e8aca23ce1ccad7b4f7fd357d8b2ff6a6620a8f78cfe9a
+new source:  4297f2034d080ba7219d3d25fcbb101b3f8288d7be04fb8848cf162a06707169
+tail patch:  0e61ae83f3ec9c050d4be91da5f8dd784165519db1fa8f6eac43bd167ff11314
+```
+
+The earlier `source-replay-r12.json` pins a superseded candidate; use the final
+`source-check-r12.json`. These are source checks, not native compilation, a full
+CI patch-chain replay or a verified new kernel.
+
+**Isolation and next gate:** `C:\ports\ios-cas-r12-ufs-poll`, branch
+`codex/r12-ufs-poll-20261102`, based on accepted r11 source
+`45e0536244c628afe323843933b55271a740d784`. Only this entry and patch 0088 change.
+Build the pinned r12 commit on the existing macos-15-intel workflow in
+`proshivka/ios-cas`; do not submit a PR or use the original ios-sweet repository.
+No r12 CI run, compiled kernel, package or device boot is claimed at this milestone.
+After CI success verify exact source, full artifact digests, ARM64 kernel and old
+plus new linked checkpoints before packaging. Keep the donor shim/DTB/ADT,
+memory `0xb0000000 / 0x4cf00000` and `ufsrw=0 sweetlog=0 nortc=1`.
+Before any temporary boot verify the known cas phone separately from rooted Alice.
+The original dirty repository and all previous artifacts/intents stay intact.
+Current source commit, CI receipts and cross-harness state: `C:\ports\handoff.md`.
+
+---
+
+### 2026-11-02 — r11 CI runner migration after confirmed macOS 14 retirement
+
+**Confirmed platform failure:** exact r11 run `41350752723` at source
+`502cd7f52944fb4446548ddf4b820cf8f6f43705` has a saved attempt-1 check annotation:
+"This job failed because of a scheduled macOS 14 runner image brownout. macOS 14
+runner images will be retired on November 2, 2026."
+The user's same-run retry was accepted on 2026-11-02 at 17:22 UTC; the saved latest
+state was queued with attempt still 1, not a successful Build. Its dispatch/rerun
+intents remain in `C:\ports\r11-diag` and must stay intact.
+
+**Migration candidate:** use `macos-15-intel` to keep the previous Intel host and
+record host/Xcode/iig/SDK selection. Keep pinned DXB, workflow inputs and kernel
+patches unchanged. Newer Xcode's iig may need compatibility work for xnu-8796;
+this runner change does not establish a successful compile or linked kernel.
+No fake iig replacement or generated-header stubs are used in this workflow.
+
+**Isolation and next gate:** changes are only this NOTES entry and xnu workflow
+in `C:\ports\ios-cas-r11-ci-migrate`, branch `codex/r11-macos15-20261102`, based
+on exact `502cd7f`. The original dirty `C:\ports\ios-cas` and frozen
+`C:\ports\ios-cas-r11-diag` stay intact. Build this new exact commit separately;
+inspect actual toolchain/Build errors before addressing iig ABI. After success,
+verify the same r11 caller/source hashes, linked inert beacon/checkpoints and
+new kernel identity before new packaging/device boot.
+
+**Device baseline changed:** the user reports installing MIUI 14 xiaomi.eu.
+Android userspace is not a dependency of temporary XNU boot or CI. Firmware/DTBO
+and userdata may have changed during installation; fresh device identity and
+bootloader checks are required before another verified temporary boot. No new
+device operation, root mount or userland result is claimed here.
+
+Current cross-harness state and exact commit/run receipts: `C:\ports\handoff.md`.
+
+---
+
+### 2026-11-01 — r11 candidate: instrument the gap after IOKitBSDInit ret 0
+
+**New device observation on verified r10nro:** temporary boot was accepted at
+`2026-11-01T19:37:52.0652703Z`. Image SHA256:
+`a23a4951b7d1c0853b47b0160a5521d99018979047f8bcab8dbbeb2e8d79eb24`.
+The user reported the final line `SWEETM 31 IOKitBSDInit ret 0`, no later text,
+then a manual return to TWRP after an unspecified long interval. No full photo/log
+or exact elapsed time was captured. This establishes an observed successful
+IOKitBSDInit return, not a proven hang, automatic reboot, root mount or userland.
+
+**Diagnostic candidate:** `0087-sweet-post-autoconf-marks.patch` adds 17 pairs of
+fixed `printf` strings (`SWEETP 00` through `16`) around the original caller-side
+calls from `bsd_autoconf()` through `inittodr(0)`. Existing feature guards and
+call order remain intact; every added print is SWEET-only. `00 ...-done` follows
+the return from `bsd_autoconf`; `01` surrounds DTrace, `02` loopattach, `15`
+net_init_run and `16` inittodr. Disabled features produce expected number gaps.
+An `...-done` line means that call returned, not that its subsystem is usable.
+The existing `SWEETM 40 setconf` remains after this interval. Output may change
+timing; this patch is instrumentation, not a diagnosed kernel fix.
+
+**Completed local validation:** add-only delta (102 C source lines, no deletions)
+applies with `git apply --check` and `git apply` to the exact frozen r10
+`bsd/kern/bsd_init.c` pinned by successful CI `40173696413` / source
+`4cd53c45a8c046730d15c421d379e973672209be`. Git-applied bytes match independently
+generated candidate bytes. Before SHA256:
+`61bcdd43e7bce98d6bc683e2faca69570b59e1100179645df60dc3b22f96bb4d`;
+after SHA256 `98cc79f84094c95b392af481d07528935ceed1ae0eb0c428ff8b270bc32b20ca`.
+Patch SHA256 `c76166f53ac120f2cf521a966e4d29f4c5c689f30b35845690e833c95defcfb8`.
+Read-only independent review found no confirmed defect. These are source/apply
+checks, not a new full patch-chain replay, compile or CI build.
+
+**Isolation:** implementation is on `codex/r11-post-autoconf-20261101`, separate
+worktree `C:\ports\ios-cas-r11-diag`, based on `988d6fb` (only documentation
+differs from pinned `4cd53c4`). The original `C:\ports\ios-cas` working files,
+HEAD and dirty index must remain intact. Private state snapshots stay outside git.
+Current local source report: `C:\ports\r11-diag\source-apply-report.json`.
+Current cross-harness handoff: `C:\ports\handoff.md`.
+
+**Next gate:** build this exact candidate on CI; verify successful Build, exact
+post-patch source, ARM64 Mach-O/SHA256/UUID, linked inert beacon and checkpoint
+strings before packaging a new image. No r11 CI run, kernel, image or device boot
+is claimed here. Keep r10nro's donor/DTB/ADT, memory and read-only arguments.
+Do not repurpose r10's hard-pinned validators as proof of a different source/run.
+
+---
+
+Earlier entries are retained milestone history; their r10 queued/no-boot state
+is superseded by the evidence above and the current C:\ports\handoff.md.
+
+### 2026-11-03 — r13 rootfs: fsck cache workaround verified; full Linux build pending
+
+Publication branch `codex/cas-bringup-pr-20261103` contains the same nine real
+changes as `origin/main..4a572fd`, attributed to the repository owner's supplied
+GitHub email. Their original author dates are retained; accepted source/artifact
+references below still refer to the original frozen commits, not rewritten CI
+run IDs. Implementation files are byte-identical to the original working branch.
+Original dirty main, accepted r12 worktree and the active r13 build are preserved.
+
+The user's full Linux build has now completed the backend probe: repair,
+independently empty-journal guarded fsck, fresh RO mount, exact ownership/modes,
+updated contents through BOTH hardlink aliases, symlink and Case/case all PASS.
+Build proceeds to APFS copying into the new 16GiB OUT. Final rootfs acceptance
+and successful iOS boot are still pending. Publish as a draft while that full
+run is pending. Agent-side Git/GitHub API network calls are blocked; remote
+publication must execute from the user's normal shell. No remote push/PR is
+claimed merely from preparing this branch.
+
+Current hardware milestone is **BSD root selected, HFS mount rejected**. The
+verified r12 kernel from Actions run `41523222878`, exact source
+`4d8e6ab7a4614bf1c0636332fc81a2f5fb4395b5`, was temporarily booted with
+`sweetkeys=0 sweettouch=0 sweetusb=0 sweetsample=-`, UFS writes/logging disabled.
+User console confirms GPT reads, userdata on LUN0 and `SWEETM 41 IOFindBSDRoot
+ret 0`; HFS then rejects signature `2db5`. TWRP independently showed F2FS on
+`/data` via dm-6. This is not a successful root mount or iOS userland boot.
+Full console and image proof remain outside Git in `C:\ports\r12-rootdiag`.
+
+The old `C:\ports\iosroot\ios16-root.img` is empty HFSX (only journal files).
+All three extracted 20H392 source DMGs now match their saved IPSW entry sizes
+and CRC32, and their SHA384 matches BuildManifest Digest. Receipt:
+`C:\ports\r13-rootfs\source-inputs-verified.json`; Apple binaries stay out of Git.
+
+The user's WSL kernel `6.18.54.1-microsoft-standard-WSL2` has no available
+`hfsplus` module. apfs-fuse, mkfs.hfsplus, fsck.hfsplus and rsync are installed;
+the user has now installed guestmount/libguestfs `1.58.1-3ubuntu3`, supermin,
+QEMU and `linux-image-7.0.0-42-generic` with its modules. Apt completed without
+a reported fatal error. This generic kernel is for the guestfs appliance;
+it is not a module source for the active WSL kernel. `libguestfs-hfsplus` was
+recommended but not explicitly installed. The latest invocation now reaches
+probe file creation and metadata operations; full HFSX acceptance is still
+pending. Agent WSL launch is denied by CreateInstance/E_ACCESSDENIED,
+so Linux commands run in the user's existing WSL prompt. User requested direct
+commands and no new wrapper scripts.
+
+This isolated branch `codex/r13-rootfs-guestmount-20261103`, based on the accepted
+r12 source, updates existing `tools/mkiosroot.sh` with native/guestmount backend
+selection. The guest backend requires root and an appliance kernel; it uses
+direct QEMU with TCG. It checks real HFSX case handling, ownership, modes,
+symlinks and hardlinks on a temporary 64MiB image before creating the output.
+Guest unmount waits for the daemon PID to exit before fsck or image reuse.
+The output is atomically reserved with O_EXCL to prevent concurrent overwrite.
+Critical launchd/dyld paths and the nonempty primary arm64 dyld shared cache
+with matching magic must exist before final offline filesystem checks.
+Cleanup failure also fails the build. `.gitattributes` keeps this Bash file LF
+on Windows checkouts.
+
+The first user Linux invocation of commit `511456f` failed on the 64MiB probe:
+FUSE rejected `allow_other\,use_ino`, then libguestfs reported fuse_new Invalid
+argument. guestmount escapes the comma inside a single `-o` value. Commit
+`1098bbe` split the options, but the next user invocation rejected `-o use_ino`
+on its own. The installed guestmount does not accept that option. The builder
+now uses only `-o allow_other`. The hardlink probe retains uid/gid/mode/linkcount
+checks and verifies shared contents by writing through the alias and reading
+the original, instead of depending on FUSE inode presentation. Symlink/case
+checks and unmount/PID/offline-fsck sequencing remain intact.
+
+Neither failure produced a PID file; conservative cleanup retained
+`/tmp/tmp.dPo7RKPxuJ` and `/tmp/tmp.sIWajs3odc` because closure was unconfirmed.
+Its diagnostic states uncertainty rather than claiming a live mount. The real
+output image is still absent at the latest host check; repeating the command
+uses a fresh private test directory and refuses an existing rootfs output.
+
+Current Bash syntax and diff whitespace checks PASS. Existing-output and invalid
+backend refusal checks passed before these compatibility fixes. Earlier static
+reviews passed but missed the FUSE option defects exposed by Linux execution.
+The next user invocation (`0acb9e2`) got past guestmount and file creation,
+chown/chmod/link operations, but rejected the expected metadata tuple
+`501:20:640:2`. No actual uid/gid/mode/nlink values were printed in that version;
+the underlying cause is not yet established. No cleanup error was reported,
+and the real root image remains absent.
+
+The builder now prints observed/expected metadata and, on refusal, attributes
+of both aliases. Guestmount gets four exact-value reads with at most three
+one-second waits for possible FUSE attribute caching; native still checks once.
+Persistent mismatch still fails before output creation. Synthetic control-flow
+checks PASS for correct, transient, persistent and native-owner failure cases;
+these do not exercise a Linux mount. Syntax/diff checks and independent review
+PASS. FUSE caching is a hypothesis, not a confirmed cause or completed fix.
+
+The latest real user invocation (`f49d335`) reached exact `501:20:640:2` but
+failed the immediate shared-write content read. Its actual bytes were not
+printed. This still does not distinguish FUSE's size/page cache from a backing
+hardlink failure. The user requested a complete pipeline fix instead of further
+successive single-check retries.
+
+Current implementation finishes ALL probe mutations first, unmounts and waits
+for the writer PID, repairs only the newly created HFSX probe and requires clean
+read-only fsck, then mounts a fresh read-only view. It verifies both aliases'
+metadata and full bytes, symlink target/content and distinct Case/case contents.
+No inode-number equality or live-mount delay is needed. The unique probe lives
+beside OUT, so a failed closed probe remains available for host inspection;
+uncertain writer closure is reported separately and still blocks fsck/reuse.
+
+The complete output follows the same close/repair/strict-fsck/RO-check/close
+sequence. APFS inputs remain read-only. Cache/cryptex lists come from immutable
+sources with NUL delimiters and find errors checked before OUT reservation.
+Existing aliases are tracked and paths resolve iOS absolute symlinks from the
+image root. The shared resolver is in the EXISTING `sweet-root-tweaks.py`, which
+also uses it for writes, including final data-ark symlinks and canonical root
+arguments. No new wrapper script was added.
+
+`SWEET_ROOT_TWEAKS=1` applies that existing tool during the same writable output
+mount; its 16.7.16/20H392 requirement is checked before output allocation. The
+final cold check verifies ARM64 launchd MH_EXECUTE and dyld MH_DYLINKER headers,
+cache magic/alias sizes, cryptex contents, source system version, keybag/log
+metadata and the enabled migration preference. A cache exposed through the
+same resolved path needs no redundant hardlink; distinct paths require nlink>=2.
+
+Final syntax/diff/early-refusal checks PASS. Simulated semantic fixtures cover
+bad data, metadata, absolute parent/final symlinks, root aliases, ARM64 headers,
+cache/version/marker failures; five lifecycle cases cover normal completion,
+header repair, bad data, bad fsck and a live writer. All PASS, plus independent
+static review. These checks do NOT execute Linux guestmount or copy Apple files.
+Current tool hashes:
+`mkiosroot.sh`: `605bebf408d338b8e8162dde30c1a006504446d0a535d7fadc00609487026995`;
+`sweet-root-tweaks.py`: `9d2b0c61e7031d021301966000e3330f891bf0b414a7748c3e43c0bf3f372e8c`.
+
+Real run of parent commit `7d180f9` stopped before OUT allocation on strict
+`fsck.hfsplus -f -n`: `Volume header needs minor repair (1, 0)`.
+Closed 64MiB probe `C:\ports\r13-rootfs\ios16-root-20H392-r13.img.probe.Td1luL`
+has SHA256 `2f3237d3486f028d03056537271b6d2ce5a25332f637e4cdac6eae2adf02fd7c`.
+Independent raw catalog inspection confirms both aliases point to the SAME
+HFS hardlink inode: uid501/gid20/mode0640/nlink2, exact updated 16-byte payload.
+Case/case and symlink also match. Proof: `probe-Td1luL-inspection.json` outside Git.
+
+Debug fsck identifies PRIMARY VHB read result35 = EDEADLK (cache buffer conflict),
+not a field comparison failure. Repeat repair on a separate copy reports OK but
+changes zero bytes; read-only check repeats EDEADLK. Source archive downloaded
+by user: diskdev_cmds tag540.1, kept outside Git. SControl calls IsJournalEmpty
+only for no-write/non-live checks; cache.c returns EDEADLK for an active buffer.
+GetJournalInfoBlock has unreleased-buffer error paths, but the exact branch
+taken by the installed Linux port is not yet established. Stale alternate
+counts are permitted by Linux's conditional backup-header update and are not
+the demonstrated cause. Do not manually equalize the headers.
+
+User's actual `fsck.hfsplus -d -l -f -n` on the closed regular probe PASS:
+NO WRITE, all seven filesystem stages, appears OK, unchanged SHA256.
+Current builder retains strict -d/-f/-n first. A fallback is allowed only for
+540.1-Linux's exact primary-VHB/EDEADLK with no tree/catalog status errors.
+Independent binary checks then require matching HX5 clean journaled headers,
+valid geometry, matching JIB, internal needsInit flags5, bounded aligned and
+ALL-ZERO journal. Only then -l/-f/-n is allowed; it must exit0 and print every
+tree/bitmap/volume stage and NO WRITE/OK. Upstream -l on an unmounted regular
+file skips the problematic journal reader, not filesystem checks. Actual Linux
+execution above confirms the stages. Unknown failures and initialized/nonempty
+journals remain refused. Probe/output writer closure is still mandatory.
+
+Syntax, embedded Python, actual probe/log guard checks, damaged-copy refusals
+and independent review PASS. Receipt `C:\ports\r13-rootfs\fsck-workaround-verification.json`.
+No new wrapper, kernel build, CI, remote push or device command. Full cold
+backend probe, OS copy, rootfs acceptance and iOS boot remain pending.
+
+Next: run the existing builder in the user's WSL prompt with
+`SWEET_HFS_BACKEND=guestmount SWEET_ROOT_TWEAKS=1` against the verified DMGs into a **new**
+`C:\ports\r13-rootfs\ios16-root-20H392-r13.img`. Validate the result and confirm
+the tweak stage completed successfully. Capture the full output
+with tee to `C:\ports\r13-rootfs\build-r13.log` for host inspection. Userdata installation
+would replace current Android data and needs specific approval. No device
+write/flash/erase/format/GPT action has been issued during rootfs preparation.
+Original dirty `C:\ports\ios-cas` and frozen accepted worktrees are preserved;
+current cross-harness checkpoint is `C:\ports\handoff.md`.
+
+---
+
 ### 2026-10-25 — r10: 0086 committed; exact-source/frozen checks PASS, CI 40173696413 queued
 
 **Implemented:** new tail patch `0086-sweet-disable-fb-beacon.patch` replaces only
