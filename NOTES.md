@@ -1,3 +1,31 @@
+### 2026-11-04 — r14: branch published; PowerShell 5.1 run-list handling corrected
+
+The user's push succeeded for exact source
+8a79fcf0f301a40a9f461d521ee4916646f4408c on
+proshivka/r14-ufs-rootmount-20261104. The previous inline block then stopped at
+`Kernel run source mismatch`; no exact r14 run/dispatch is confirmed yet.
+
+Reproduced on Windows PowerShell 5.1.26100.9711: wrapping the pipeline result
+of ConvertFrom-Json for `[]` in @() produces a one-element array containing an
+empty Object[], so Count is 1 and the supposed run has no headSha. This can
+skip dispatch and trigger a false source mismatch. The corrected inline block
+iterates the parsed array and emits only real entries; empty input emits none.
+It preserves the SHA checks and reuses an existing exact run if present.
+
+The corrected clipboard block verifies the already published branch via the
+GitHub ref API and dispatches xnu.yml without another push. Fourteen local
+execution fixtures passed on the actual PowerShell 5.1 host: empty/one/multiple
+runs, delayed visibility, wrong account/branch/run/view SHA, native failures,
+invalid JSON/entries and the bounded visibility timeout. gh, sleep and receipt
+writes were mocked; no credentials, network, device commands or live CI receipts
+were used. Report: C:/ports/r14-rootmount/ci-launch-ps51-checks.json.
+Clipboard readback passed. Next: user runs the corrected block and provides
+the observed run URL; new kernel/source/artifact acceptance remains pending.
+
+This documentation update does not change the kernel patches or the published
+CI source above. Keep that exact source for the pending build and distinguish
+it from any later local documentation HEAD.
+
 ### 2026-11-04 — r14: report UFS as flash and trace root mount through init exec
 
 The user's manual r13 writable boot now reports userdata read-write, passes
