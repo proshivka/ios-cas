@@ -1,3 +1,45 @@
+### 2026-11-05 — r14: complete recovery tail is zero; DD footer fixed and one-second log variant ready
+
+The user's recovery pull failed the exact-size guard. Local inspection shows
+4198486 bytes, not a short read: the first 4198400 bytes are the complete requested
+1025-block area and every byte is zero. The trailing 86 bytes exactly match dd's
+1025+0 records in/out and 4198400-byte statistics. ADB exec-out merged remote
+stderr into binary stdout; redirecting the Windows client's stderr alone did not
+separate it. The incorrect initial commentary called this a short read; corrected.
+The original file is preserved and a separate -area.bin contains the exact region.
+Evidence: r14-rootmount/r14-earlydiag-pull-triage.json and
+sweetlog-earlydiag-ed7117fa2cc94a76883b535afae3aad6.bin / -area.bin.
+There is no SWEETLOG header or captured console in this read region. Why the
+writer did not persist there, and whether the global kernel stopped, remain open.
+
+Corrected inline recovery read quotes the whole remote dd command and applies
+2>/dev/null remotely. Exact byte/header checks and binary stream copying remain;
+raw metadata now records partition path, size, skip and header even on rejection.
+A local Python argv probe verified the command reaches the child as one argument
+with redirection intact. No ADB/device command was executed in that probe.
+Both corrected read and new boot passed PowerShell 5.1 syntax/AST checks.
+Receipt: r14-log1s-command-checks.json. No wrapper script file was added.
+
+New temporary image: C:/ports/r14-rootmount/boot-log1s/boot.img, 17772544 bytes,
+SHA256 35739ad2faf59681a68a9943c4f4935b95536184818b9fb56bdc2c9e1495906c.
+Only ufslogsecs=1 was appended to the accepted earlydiag arguments, with the
+Android ID recomputed. Cmdline is 576/608 bytes. Exact source verifies the knob
+accepts 1..60 seconds; sampler still first runs after 90 seconds. All loaded
+kernel bytes, other arguments, shim/DTB/ADT, memory and layout are preserved.
+Independent Android ID and written image readback passed. Receipt:
+r14-log1s-boot-ready.json / boot-log1s/derivation.json.
+
+The checked new boot command is in the clipboard (r14-log1s-clipboard.json).
+User goes from installed recovery to bootloader, boots this image, waits at least
+110 seconds, then supplies console or enters recovery to run the corrected read.
+The fresh manual receipt will be manual-boot-r14-log1s.json; it does not exist yet.
+The corrected read is retained in session state as r14Log1sPullCommand. Do not
+repeat the old contaminated command. A one-second interval is an attempt to
+capture earlier output, not a demonstrated fix for the underlying boot stop.
+No kernel rebuild, CI dispatch, rootfs edit/reflash or local device operation was
+performed. Kernel source remains 4ea48875d9d8e3824ba41e80e7d23a9da5a2cd6c,
+CI 42056718591 attempt 1; later handoff commits are documentation only.
+
 ### 2026-11-05 — r14: earlydiag boot observed through nine minutes; full persistent log requested
 
 manual-boot-r14-earlydiag.json confirms the user sent the exact earlydiag image
