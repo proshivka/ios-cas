@@ -1,3 +1,26 @@
+### 2026-11-05 — r14: log1s boot observed; corrected recovery read now in clipboard
+
+The user booted the exact one-second-log variant, image SHA256
+35739ad2faf59681a68a9943c4f4935b95536184818b9fb56bdc2c9e1495906c.
+manual-boot-r14-log1s.json confirms acceptance at 2026-11-05T17:52:11.3021484Z,
+source 4ea48875d9d8e3824ba41e80e7d23a9da5a2cd6c / CI 42056718591 attempt 1,
+and configured flush interval 1 second. The new transcription again contains
+DONE UMD_INIT and exec dirs_cleaner / xpcroleaccountd / init_featureflags; there
+is no SMP, IOK, later exec or panic in the excerpt. New elapsed time was not
+specified; do not carry the previous boot's nine-minute timing into this one.
+Foreground/persona errors still precede successful UMD completion.
+
+Evidence outside git: boot-r14-log1s-console-user.txt and r14-log1s-boot-observed.json.
+Persistence of this new boot has not been checked yet. The corrected read-only
+recovery command is now copied and verified (r14-log1s-recovery-clipboard.json),
+replacing the already-used boot command. User enters installed recovery and
+runs it; it suppresses remote DD stderr, retains exact binary/header checks and
+records partition/size/skip/header even if the header is invalid. Next inspect
+sweetlog-log1s-* raw metadata, header and decoded SMP/console if present.
+Do not repeat the old DD command or prepare another boot before this result.
+No new image/build/source change, network request or local device command in
+this milestone. The underlying stop remains unproven.
+
 ### 2026-11-05 — r14: complete recovery tail is zero; DD footer fixed and one-second log variant ready
 
 The user's recovery pull failed the exact-size guard. Local inspection shows

@@ -1,3 +1,19 @@
+## Последнее на 2026-11-05: log1s загружен, нужен исправленный recovery pull
+
+manual-boot-r14-log1s.json подтверждает fastboot accepted
+2026-11-05T17:52:11.3021484Z, image
+35739ad2faf59681a68a9943c4f4935b95536184818b9fb56bdc2c9e1495906c,
+flush configured 1 s. В новом отрывке опять DONE UMD_INIT и exec init_featureflags;
+SMP/IOK/panic нет. Длительность ожидания этого boot пользователь не указал;
+прежние девять минут относятся к earlydiag. Запись нового журнала пока не проверена.
+
+В буфере уже исправленная read-only команда чтения из установленного recovery,
+receipt r14-log1s-recovery-clipboard.json. Пользователь запускает её; далее читать
+sweetlog-log1s-* raw/header/partition metadata и полный текст/SMP при наличии.
+Свидетельства: boot-r14-log1s-console-user.txt, r14-log1s-boot-observed.json.
+Не делать ещё один boot до этого результата. Kernel source/CI прежние; ни одной
+локальной операции устройства. Подробности и более ранние состояния ниже/в NOTES.
+
 ## Последнее на 2026-11-05: прочитанная область журнала нулевая; готов boot-log1s
 
 Recovery pull получил 4198486 байт: полные 4198400 байт области + 86 байт
