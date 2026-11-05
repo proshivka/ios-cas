@@ -1,3 +1,47 @@
+### 2026-11-05 — r14: root init reached; launchd rejected for wrong executable platform
+
+The user manually booted the accepted r14 image. manual-boot-r14.json records
+fastboot success at 2026-11-05T16:20:41.3235842Z for source
+4ea48875d9d8e3824ba41e80e7d23a9da5a2cd6c, CI 42056718591, image
+7f7d4021c435a385e8f90d7434d2f353cfb178328168f38fee097c8ab8ee9813.
+The supplied panic reports PID 1 init and SIGKILL/CS_KILLED, namespace 9,
+code 0xe. The matching exec frames resolve in the accepted kernel to
+bsdinit_task -> load_init_program -> load_init_program_at_path -> __mac_execve
+-> process_signature -> psignal_internal -> psignal_internal.cold.2.
+This establishes progress to the initial exec path and implies earlier root
+mount/file access succeeded. Successful launchd exec/userland/UI is not observed.
+
+The exact accepted buildtree defines OS_REASON_EXEC=9 and
+EXEC_EXIT_REASON_WRONG_PLATFORM=14 in bsd/sys/reason.h. OSX-configured
+DEVELOPMENT kern_exec.c rejects an iOS executable with no spawn platform when
+unentitled_ios_sim_launch is false and no-sandbox entitlement is unavailable.
+Its compiled tunable and startup registration are present in the linked kernel.
+The original r14 arguments omitted this flag. The historical 0029i boot already
+used unentitled_ios_sim_launch=1 to pass the same gate. The panic's additional
+"handshake structure not initialized" comes from the panic shared-memory console,
+not a launchd handshake. The transcribed UUID differs in several characters;
+preserve the original transcript and do not claim every typed frame is verified.
+
+A new argument-only variant is ready:
+C:/ports/r14-rootmount/boot-iosplatform/boot.img, 17772544 bytes, SHA256
+96afe583ec4de540635ff11fcf9e6a069840c318790726fbe19b3f9a229a3aad.
+Only unentitled_ios_sim_launch=1 was appended. The kernel/source/CI stay exact;
+shim/DTB/ADT, memory, payload segments and all previous arguments are preserved.
+Byte comparison permits changes only in the 608-byte argument field and Android
+v2 checksum; independent checksum and disk readback passed.
+Receipts: r14-iosplatform-boot-ready.json and boot-iosplatform/derivation.json.
+Raw user evidence/diagnosis: boot-r14-panic-user.txt / boot-r14-panic-analysis.json.
+All are outside git. The original boot image and installed userdata are retained.
+
+The new checked inline command is in the clipboard. The user performs temporary
+fastboot boot and then supplies exec launchd, SWEETR, dyld or panic output.
+It writes manual-boot-r14-iosplatform.json only after fastboot success.
+The user has now run it: that receipt confirms the exact variant was accepted
+at 2026-11-05T16:36:26.2915435Z. The new on-device console result is still awaited;
+fastboot transfer success alone does not establish successful exec or userland.
+No new wrapper file, kernel patch, CI dispatch or local device command was made.
+Do not infer the variant's hardware success before the new console evidence.
+
 ### 2026-11-05 — r14: successful exact kernel accepted; writable temporary boot ready
 
 xnu run 42056718591 attempt 1 succeeded at published source
