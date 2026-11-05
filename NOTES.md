@@ -1,3 +1,64 @@
+### 2026-11-04 — r13: native GitHub Actions rootfs workflow ready; hosted run pending
+
+The user requested moving the slow rootfs assembly to GitHub Actions.
+The new rootfs workflow uses Ubuntu 22.04 with native hfsplus loop mounts,
+reclaims unused hosted-runner SDKs and requires 35GiB free before downloading.
+It resolves the pinned iPhone X 20H392 IPSW, extracts only BuildManifest and
+three DMGs with the existing range downloader, and checks both local source
+pins and BuildManifest component digests. It invokes the unchanged builder
+with SWEET_HFS_BACKEND=native and SWEET_ROOT_TWEAKS=1, then compresses only a
+successfully verified/closed image and records source/run/checksum provenance.
+The image artifact has one-day retention; failure diagnostics have three days.
+The feature-branch push trigger bootstraps a new workflow without requiring a
+default-branch merge. The existing xnu workflow and accepted boot image are unchanged.
+
+YAML/Bash/embedded-Python syntax passed. Source pins match the real verified
+BuildManifest and saved DMG receipt. Fourteen offline execution cases passed
+for the download verification stage, including wrong source URLs, versions,
+products, hashes, duplicate/missing members and inconsistent manifest digests.
+These are preparation checks; hosted native HFSX, download, upload and speed
+results are not yet established. The user supplied the known-working
+/opt/apfs-fuse commit `66b86bd525e8cb90f9012543be89b1f092b75cf3` using
+sudo git rev-parse; that exact commit is now pinned in the workflow.
+The host container is made readable by the runner only after successful builder
+exit and image closure, so packaging works with the builder's root:0600 output.
+Agent Git/GitHub network remains blocked, so publication will use direct
+commands in the user's shell. No hosted run or uploaded root image is claimed.
+No new wrapper script, device command or edit to the running builder was made.
+
+---
+
+### 2026-11-04 — r13: KVM backend probe passed; full image copying
+
+The user has now started the prepared KVM command. `build-r13-kvm.log` records
+`KVM acceleration preflight passed`, guestmount acceleration kvm, both persisted
+HFSX metadata/hardlink/symlink/case checks and `HFSX backend probe passed`.
+The new 16GiB image is allocated and the OS-root rsync stage is progressing;
+SystemOS/AppOS copies, layout/tweaks and final cold rootfs acceptance are pending.
+No full image acceptance or measured general speedup is claimed. Copying uses
+APFS-FUSE sources and a guestmount HFSX destination; a manual copy through the
+same mounts retains those per-file layers. The running builder was not edited.
+
+The user powered off the laptop before the original r13 builder finished its
+cleanup. After restarting, their exact `ps -C` query for guestmount,
+guestunmount, both qemu-system-x86 command names, rsync, umount and apfs-fuse
+returned only the header. No old writer is reported running. This establishes
+process termination, not a clean unmount or acceptance of the interrupted image.
+The old `C:\ports\r13-rootfs\ios16-root-20H392-r13.img` remains a partial,
+unaccepted 16GiB file; the last saved copy log ends at 408,176,521 bytes.
+
+The KVM builder implementation remains source commit `837376dc6ed8da9cdeea5660f8ad3557b85c2d9f`,
+SHA256 `f19a1f1e3e885cbfbf0fa22ebab11989e4bba595f19ab72349dccd9cc6c53df3`.
+The user's prior API12/create-VM test passed. The next direct WSL command uses
+this worktree, `SWEET_HFS_BACKEND=guestmount SWEET_HFS_ACCEL=kvm SWEET_ROOT_TWEAKS=1`,
+and separate output/log `ios16-root-20H392-r13-kvm.img` / `build-r13-kvm.log`.
+Both new paths were absent before the user's KVM launch; the pre-launch .NET
+DriveInfo check reported 154.22GiB available on C:. The full rootfs build and
+final cold checks are still pending. No device command or remote publication
+was performed. Earlier entries describing an active TCG copy are history.
+
+---
+
 ### 2026-11-02 — r12: instrument UFS root lookup and keep early polling runnable
 
 **New r11 console observation:** the user supplied `SWEETM 31 IOKitBSDInit ret 0`,
@@ -135,11 +196,26 @@ is superseded by the evidence above and the current C:\ports\handoff.md.
 
 ### 2026-11-03 — r13 rootfs: fsck cache workaround verified; full Linux build pending
 
-Publication branch `codex/cas-bringup-pr-20261103` contains the same nine real
+Performance follow-up: the active original r13 build explicitly uses force_tcg
+and scans tens of thousands of small files through APFS-FUSE/guestmount/DrvFS.
+Its displayed rsync average fell below 0.5MB/s; this is not an SSD benchmark.
+User's independent root KVM probe returned API12 and KVM_CREATE_VM_OK.
+This publication worktree now supports SWEET_HFS_ACCEL=auto|kvm|tcg and defaults
+to libguestfs automatic selection instead of forcing software CPU emulation.
+Explicit kvm checks API12 and creates/closes an empty VM before allocation,
+then forces KVM in libguestfs. An unavailable KVM is an error, not silent TCG.
+The original running builder was NOT edited. All writer-close, empty-journal,
+filesystem and cold contents/metadata acceptance checks are unchanged.
+New command must use a separate OUT/log (`ios16-root-20H392-r13-kvm.img`,
+`build-r13-kvm.log`). No speedup, new Linux guestmount probe or full image is
+claimed before running it. The old copy remains partial; do not reuse it.
+
+Initial publication candidate `codex/cas-bringup-pr-20261103` contained the same nine real
 changes as `origin/main..4a572fd`, attributed to the repository owner's supplied
 GitHub email. Their original author dates are retained; accepted source/artifact
 references below still refer to the original frozen commits, not rewritten CI
-run IDs. Implementation files are byte-identical to the original working branch.
+run IDs. Those implementation files were byte-identical to the original working
+branch; the subsequent KVM performance change is described above.
 Original dirty main, accepted r12 worktree and the active r13 build are preserved.
 
 The user's full Linux build has now completed the backend probe: repair,
