@@ -1,3 +1,29 @@
+### 2026-11-05 — r14: fetch retry published; new exact CI run observed
+
+The user published fetch-retry source
+4ea48875d9d8e3824ba41e80e7d23a9da5a2cd6c on
+proshivka/r14-ufs-rootmount-20261104 and launched xnu run 42056718591:
+https://github.com/proshivka/ios-cas/actions/runs/42056718591.
+ci-retry-launch-r14.json and ci-retry-state-r14.json confirm that exact source,
+account proshivka and build job 127346981215. The initial snapshot at
+2026-11-05 15:36:43 UTC is queued; completion is still unverified. Do not dispatch
+again. The user's PowerShell watch will save the final state, artifact metadata
+and full build log or failed-step log automatically in C:/ports/r14-rootmount.
+
+The inline launch checks HEAD/clean tree/branch/origin/account, pushes the exact
+SHA, verifies the remote ref and reuses an existing exact run before dispatch.
+An intent receipt prevents repeat dispatch while a requested run is not visible.
+Syntax and seven actual PS5.1 run-list fixtures passed; only parsing/helper
+behavior was executed locally, with no credential reads or network calls.
+Report: ci-retry-launch-ps51-checks.json. No new wrapper file was created.
+
+Keep this published CI source separate from later documentation-only HEADs.
+The old run 41824315100 is a confirmed dependency-fetch failure, archived in
+ci-41824315100-attempt-1; its uploaded diagnostics are not a new kernel.
+New compilation, artifact/kernel acceptance and r14 temporary boot remain
+pending. After success verify the three actual compiled sources and loaded
+SWEETR formats before preparing the user's next manual boot command.
+
 ### 2026-11-05 — r14: dependency fetch failed with HTTP 502; bounded retry prepared
 
 The user's fresh authenticated snapshot confirms xnu run 41824315100,
