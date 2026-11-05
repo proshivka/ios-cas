@@ -1,3 +1,51 @@
+## Актуально на 2026-11-05: r14, launchd и UMD работают; диагностика после init_featureflags
+
+Последние присланные строки: DONE EARLYBOOT SETUP / DONE UMD_INIT, затем
+exec dirs_cleaner, exec xpcroleaccountd, exec init_featureflags. Пользователь
+уточнил, что это содержимое экрана через три минуты. Прежний предполагаемый
+стоп на mobile_obliterator уже пройден. SpringBoard/UI, зависание всего ядра
+или конкретная блокировка init_featureflags пока не подтверждены. SMP-строк
+в отрывке нет; это не доказывает их отсутствие во всей консоли.
+
+Точное принятое ядро: source 4ea48875d9d8e3824ba41e80e7d23a9da5a2cd6c,
+CI 42056718591 attempt 1, SHA256
+13d385616702cc932989f2c4079e43f9999bb9e303e616575e21ee84183760fe.
+Более поздние docs-коммиты не являются исходным SHA этого CI. Артефакты уже
+проверены; пересборка, повторный dispatch и скачивание сейчас не нужны.
+
+Предыдущий taskdiag действительно принят fastboot; новый временный образ готов:
+C:/ports/r14-rootmount/boot-earlydiag/boot.img, 17772544 байта, SHA256
+8ae323de0d81147e729b0c4e6628506e9862a31f3b78b45ac03f8685dacafbb7.
+Изменены диагностические аргументы и checksum Android. Добавлены последние
+три процесса, sampler-имя init_featureflag и sweetlog=1. Cmdline 563/608,
+селекторы 123/128 и 120/128. Все загружаемые байты ядра и остальные компоненты
+сохранены. Журнал: последние 4198400 байт userdata, flush каждые 10 секунд.
+Порядок early/normal запуска проверен для первого root lookup; подробности в NOTES.
+
+Свидетельства: r14-rootmount/r14-umd-boot-observed.json,
+boot-r14-taskdiag-console-user.txt, r14-late-boot-task-static-triage.json,
+r14-persistent-log-review.json и r14-earlydiag-boot-ready.json. Они вне git.
+dirs_cleaner допускает return 0 после EINVAL; xpcroleaccountd -boot очищает
+staging; init_featureflags --boot обычно молчит. Статический FF constructor
+не содержит явного SEP/IOK/XPC wait. Once/lock/файловое I/O пока лишь кандидаты.
+Статика относится к pristine r13 HFSX, а не изменённому live userdata.
+
+Следующее действие: пользователь возвращает cas в fastboot, временно загружает
+новый образ и ждёт минимум 110 секунд. Нужны SMP/IOK/tee или полный сохранённый
+журнал из уже установленного recovery. Inline-команды boot и read-only recovery
+pull подготовлены в состоянии сессии и прошли PS5.1 syntax/AST checks. Не выбирать
+непроверенный recovery и не обходить обязательные boot tasks.
+
+Все операции телефона выполняет пользователь. Выбирать cas по ExpectedSerial
+из r13-rootfs/phone-inspection-2f5e185a92ea4f2eadcda681be4923ac.private.json;
+не печатать serial, рядом может быть Alice. Rootfs уже прошит. Сохранить образы,
+backup и frozen worktrees; без flash/GPT/bootloader/recovery/modem/persist.
+Git-автор и коммиттер: proshivka <kasikminecraft@mail.ru>, новые ветки proshivka/.
+Сеть/WSL в текущем окружении недоступны; не повторять запросы или escalation.
+Ни одной локальной команды устройства в этом milestone не выполнялось.
+
+Ниже сохранён архив старых состояний; текущий план находится выше и в NOTES.md.
+
 ## === АКТУАЛЬНО НА 2026-10-25: r10 / 0086 = 4cd53c4; CI 40173696413 запущен ===
 
 **Задача:** настоящее CI-ядро XNU на Mi 10 Ultra (cas/SM8250), затем iOS 16.7.16.

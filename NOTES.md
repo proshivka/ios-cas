@@ -1,3 +1,62 @@
+### 2026-11-05 — r14: UMD initialization completed; late boot task and persistent console diagnostics ready
+
+The latest user transcription contains DONE EARLYBOOT SETUP / DONE UMD_INIT,
+then exec dirs_cleaner, xpcroleaccountd and init_featureflags. The user clarified
+these were the screen contents after three minutes. This supersedes the earlier
+apparent mobile_obliterator stop. Real launchd and UMD initialization are observed;
+the supplied excerpt contains no later task, SMP sample, panic or SpringBoard/UI.
+It does not establish a global kernel hang or a hang inside init_featureflags.
+
+Evidence outside git: r14-rootmount/boot-r14-taskdiag-console-user.txt and
+r14-umd-boot-observed.json preserve the transcription and timing statement.
+The user booted taskdiag image b70661713fc89c50cbf02cb1707c89ae503f4f28080bf34554acecdebc86893e;
+manual-boot-r14-taskdiag.json records acceptance at 2026-11-05T16:53:07.3950491Z.
+Kernel source remains 4ea48875d9d8e3824ba41e80e7d23a9da5a2cd6c / CI 42056718591,
+attempt 1. Subsequent documentation commits are not the compiled kernel source.
+
+Read-only pristine-rootfs inspection verified bytes and launchd Boot XML for
+dirs_cleaner, xpcroleaccountd and init_featureflags. The dc_reset EINVAL path can
+return zero; the subsequent execs also demonstrate progress. xpcroleaccountd's
+-boot path cleans a staging directory and exits, unlike its persistent -launchd
+branch. init_featureflags --boot normally runs without verbose output; it builds
+and publishes the FeatureFlags shared-memory table. FeatureFlagsSupport's shared
+singleton and domains/loadAllData use once, unfair locks and Foundation directory
+reads; the checked early constructor has no explicit SEP/IOK/XPC service wait.
+No runtime wait point is established. Static receipt:
+r14-late-boot-task-static-triage.json. These bytes are from the pristine r13 HFSX
+(run 41798068342, source b6c0ec10bb8bdf6b7d04ae94c75e62dd8cc7af3a), not live
+userdata after writable boots. Do not assume a launchd_cache_loader failure.
+
+New verified image: C:/ports/r14-rootmount/boot-earlydiag/boot.img,
+17772544 bytes, SHA256
+8ae323de0d81147e729b0c4e6628506e9862a31f3b78b45ac03f8685dacafbb7.
+It extends sweetiolog/sweetnull with dirs_cleaner,xpcroleaccountd,init_featureflags
+and sweetsample with their p_comm names; init_featureflags uses init_featureflag
+in the sampler. The selector lengths are 123/120 bytes (<128), cmdline 563 (<608).
+Only those arguments, sweetlog=1 and Android v2 ID changed. All loaded kernel
+segments, shim/DTB/ADT, memory, other arguments and layout remain identical.
+Independent Android ID and written image readback passed. Receipt:
+r14-earlydiag-boot-ready.json / boot-earlydiag/derivation.json.
+
+Persistent logging uses the last 4198400 bytes of the ~95357 MiB userdata
+partition, beyond the 16 GiB HFS image. The accepted kernel's flush default is
+10 seconds. The exact source and linked calls were reviewed: IOFindBSDRoot calls
+sweet_log_start_early before rootdev; on the first lookup su.writable is initially
+false, so the early path performs read-only host/GPT preparation and returns
+before device registration or starting a writer. Normal UFS init then starts one
+writer and the sampler. Extra early allocation/host preparation remains present;
+later root-lookup retries were not validated. Receipt: r14-persistent-log-review.json.
+
+Next: the user manually boots this new image and waits at least 110 seconds for
+SMP/IOK/null output. If the screen stops, boot the existing recovery manually and
+read only the last 1025 userdata blocks. The prepared inline recovery command
+selects the private cas serial, checks cas/root shell, captures binary stdout
+without PowerShell text conversion, verifies the SWEETLOG header and decodes it.
+Both commands passed PS5.1 parsing; boot AST permits only targeted fastboot boot.
+Receipt: r14-earlydiag-command-checks.json. No device command, rebuild, CI dispatch,
+rootfs edit/reflash or recovery selection was performed locally. Hardware success
+of the new image and the runtime cause after init_featureflags are still pending.
+
 ### 2026-11-05 — r14: real launchd boot tasks observed; targeted stall diagnostics ready
 
 The user's new console proves execution of Apple launchd: "hello", Darwin
