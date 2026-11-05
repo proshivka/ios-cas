@@ -1,3 +1,37 @@
+### 2026-11-05 — r14: dependency fetch failed with HTTP 502; bounded retry prepared
+
+The user's fresh authenticated snapshot confirms xnu run 41824315100,
+attempt 1, source 8a79fcf0f301a40a9f461d521ee4916646f4408c and build job
+126555040513 finished with failure at 2026-11-04 11:54:59 UTC:
+https://github.com/proshivka/ios-cas/actions/runs/41824315100.
+The complete saved failed-step log shows 0020-stage-bearssl.sh's Git fetch
+returned HTTP 502/RPC failure and exit 128 at lines 558-561. This stopped
+dependency staging before kernel compilation or application of the r14 patches.
+Missing build/xnu.obj and fakeroot/include caused the later tar failure.
+The SDK platform copy is already optional. Collect found no kernel.*; neither
+uploaded artifact is an accepted kernel or complete compile tree.
+
+0020-stage-bearssl.sh now retries the same immutable BearSSL fetch at most
+four times, with 5/10/15-second waits after failures. It exits before checkout
+if all attempts fail. The URL, commit 7bea48e5e850ab4cafbe68d3765cdaba13a86d6f,
+checkout/rev-parse guard and entire source-staging Python body are preserved.
+No kernel patch, workflow, donor boot image or rootfs changed. Nine actual
+Git Bash control-flow fixtures passed: immediate/recovered/exhausted fetch,
+wrong commit, checkout failure, non-SWEET/missing-source guards and failed sleep.
+Git/network, sleeps and staging were mocked; syntax and exact unchanged staging
+bytes were also checked. Report: C:/ports/r14-rootmount/ci-retry-bearssl-checks.json.
+Script SHA256: 07a494638d5f59d22d3732f7c9cc882451fdb23406aa61fa23f600b493f6424c.
+Independent read-only triage agrees the packaging error follows the fetch failure.
+
+Next: publish the commit containing this fetch fix on
+proshivka/r14-ufs-rootmount-20261104 and dispatch xnu.yml for that exact new SHA.
+Preserve the failed run/source as evidence; do not label it as the new candidate.
+GitHub remains restricted in this local environment, so remote steps run in the
+user's PowerShell. Verify the new CI result, artifact digests, all three actual
+compiled sources and loaded SWEETR formats before making a fresh writable
+temporary boot. No new kernel acceptance, r14 boot image or device result yet.
+User performs all device commands. Launch-pending entries below are historical.
+
 ### 2026-11-04 — r14: branch published; PowerShell 5.1 run-list handling corrected
 
 The user's push succeeded for exact source
