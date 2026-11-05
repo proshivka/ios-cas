@@ -1,3 +1,50 @@
+### 2026-11-05 — r14: real launchd boot tasks observed; targeted stall diagnostics ready
+
+The user's new console proves execution of Apple launchd: "hello", Darwin
+Bootstrapper 7.0.0, system created/ondemand mode and the full boot arguments
+including unentitled_ios_sim_launch=1. It starts mount/mount_hfs and prints
+/dev/ufsroot0 mounted as journaled HFS, then data-protection and
+finish-obliteration -> exec mobile_obliterator. The user reports the display
+stopped there. There is no supplied later task, panic or SpringBoard output.
+Root mount and launchd userland are now observed; a global kernel hang is not.
+
+Evidence: r14-rootmount/boot-r14-iosplatform-console-user.txt and
+r14-launchd-boot-observed.json. Original kernel/CI source remains
+4ea48875d9d8e3824ba41e80e7d23a9da5a2cd6c / 42056718591. Rootfs provenance is
+b6c0ec10bb8bdf6b7d04ae94c75e62dd8cc7af3a / 41798068342, with root tweaks enabled.
+
+Read-only inspection of the pristine HFSX image verified launchd, mobile
+obliterator and seputil bytes and launchd's embedded Boot XML. Required task
+finish-obliteration runs mobile_obliterator --init, RequireSuccess=true,
+RebootOnExitCode=89. init_data_protection links to seputil; its "No SEP present"
+path explicitly returns 0. Mobile INIT checks oblit-inprogress under /options
+and DarwinOS/EphemeralDataMode; with no request it exits 0. A SEP wait is not
+unconditional. Missing INIT stderr text alone does not show which branch ran.
+Static receipt: r14-boot-task-static-triage.json. BindFS ENOENT and GetMasterBlock
+EBUSY are not the present stop; trust-cache logging has a root ownership/SIP
+fallback. No runtime launchd_cache_loader failure has been supplied yet.
+
+New diagnostic image: C:/ports/r14-rootmount/boot-taskdiag/boot.img,
+17772544 bytes, SHA256
+b70661713fc89c50cbf02cb1707c89ae503f4f28080bf34554acecdebc86893e.
+Only existing diagnostic arguments changed: sweetiolog and sweetnull select
+mobile_obliterator/init_data_protection/se_init/seputil/launchd_cache_loader;
+sweetsample selects launchd plus their p_comm names truncated to 16 characters.
+The exact kernel uses full p_name for IOKit/null logs and p_comm for sampling.
+First sample is 90 seconds after UFS init, then every 120 seconds (40 samples);
+IOKit traces are limited to 400 lines. All selectors fit 128 bytes, cmdline423
+fits the 608-byte field. Loaded kernel, other arguments and image layout match;
+independent Android ID/disk readback passed. Receipt: r14-taskdiag-boot-ready.json.
+
+The checked manual diagnostic boot command is in the clipboard. User boots it
+and provides IOK, |mobile_obliterator| and SMP lines after 90-120 seconds.
+manual-boot-r14-taskdiag.json is written only after native success. Its pending
+run should establish utility progress/stack; do not bypass the required task or
+declare its cause fixed before that evidence. No kernel rebuild/CI dispatch,
+rootfs edit/reflash or local device command was performed.
+The user has sent the exact diagnostic image: manual-boot-r14-taskdiag.json
+records fastboot acceptance at 2026-11-05T16:53:07.3950491Z. Await its console.
+
 ### 2026-11-05 — r14: root init reached; launchd rejected for wrong executable platform
 
 The user manually booted the accepted r14 image. manual-boot-r14.json records
