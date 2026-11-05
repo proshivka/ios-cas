@@ -1,3 +1,47 @@
+### 2026-11-05 — r14: successful exact kernel accepted; writable temporary boot ready
+
+xnu run 42056718591 attempt 1 succeeded at published source
+4ea48875d9d8e3824ba41e80e7d23a9da5a2cd6c. Build job 127346981215 finished at
+2026-11-05 15:53:29 UTC; Build took 905 seconds. Both new patches applied, and
+the pinned BearSSL fetch succeeded on its first attempt in this run. The retry
+failure paths remain covered by the nine offline shell fixtures.
+
+The user downloaded both exact artifacts into
+C:/ports/r14-rootmount/evidence-42056718591-attempt-1-cf6968eaa36d41afb099a976c6c94575.
+Independent acceptance verified the complete API ZIP digests, extracted bytes,
+kernel manifest, exact workflow/run/attempt/job, timestamped compile records,
+generated-header dependencies and all seven protected/new source hashes.
+HFS's extra forced compatibility header and its two leading source include paths
+are the existing wrapper; that header matches the accepted r12 archive exactly.
+The original PowerShell log is preserved. Known misdecoded UTF-8 BOM prefixes
+were removed only at timestamp boundaries for parsing, with the count/hash
+recorded. No r12 acceptance profile was relabeled.
+
+Accepted kernel: 17205264 bytes, SHA256
+13d385616702cc932989f2c4079e43f9999bb9e303e616575e21ee84183760fe,
+UUID 74331F2D-8F4B-34C4-983B-FCC50178472D. Plain ARM64 and inert UFS beacon
+verified. All 18 new SWEETR formats and existing SWEETI/M/U/P diagnostics are
+present in file-backed kernel VM. Receipt: r14-rootmount/r14-ci-verified.json.
+
+New image: C:/ports/r14-rootmount/boot-rootrw/boot.img, 17772544 bytes,
+SHA256 7f7d4021c435a385e8f90d7434d2f353cfb178328168f38fee097c8ab8ee9813.
+The exact r13 writable donor payload/image was reproduced before packaging.
+Shim/DTB/ADT, memory 0xb0000000/0x4cf00000 and writable/noinput arguments are
+preserved. New entry 0xfffffe000748c488 and end 0xfffffe00084c8000 derive from
+the accepted kernel. Loaded segment bytes, all 18 SWEETR payload formats,
+Android v2 header/ID and written image readback passed. Derivation:
+r14-rootmount/boot-rootrw/derivation.json; ready receipt: r14-boot-ready.json.
+
+The checked manual temporary-boot block is in the user's clipboard and targets
+the existing private cas serial without printing it. It checks size/hash, boots
+only this image and writes manual-boot-r14.json only after fastboot success.
+No local device command was executed. User performs the boot; root mount,
+init exec, launchd and UI are still unverified. Next console evidence: expect
+SWEETR 10 hfs-media ssd 1 fusion 0, then root-mount result and later SWEETR
+root-vnode/bootstrap/init-exec stages. Thread output can interleave.
+Keep source 4ea48875 separate from later documentation-only HEADs and preserve
+the previous images and installed rootfs. No further CI dispatch is needed.
+
 ### 2026-11-05 — r14: fetch retry published; new exact CI run observed
 
 The user published fetch-retry source
