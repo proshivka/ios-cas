@@ -1,3 +1,60 @@
+### 2026-11-05 — r14: cas virtual-timer mismatch confirmed; INTID 27 temporary image ready
+
+The corrected recovery pull completed at 2026-11-05T18:03:05Z. The file
+r14-rootmount/sweetlog-log1s-6dcc9c92800d4266b571e1ba06ec0bd6.bin is exactly
+4198400 bytes, every byte zero, SHA256
+06955cde7f98b9503653b906e9634732d59a17a6dc2cb1a0e453fbdd4adaab86.
+Its raw metadata confirms /dev/block/sda34, partition size 99989061632 bytes,
+start block 24410367, 1025 blocks of 4096 bytes: exactly the partition tail.
+There is no DD footer or SWEETLOG header. The read guard correctly rejected it.
+This supplies no new runtime trace beyond the existing DONE UMD_INIT /
+exec init_featureflags screen transcription.
+
+Static mismatch is confirmed in the exact accepted log1s image: embedded ADT
+/arm-io/gic/virtual-timer-intid is 19, while its cas Android FDT /soc/timer
+declares virtual interrupt (1,11,0xff08), meaning PPI 11 + 16 = absolute INTID 27.
+Root model is Qualcomm Technologies, Inc. xiaomi cas; inherited interrupt-parent
+selects the GIC with three interrupt cells. Both timebase frequencies are 19.2 MHz.
+The accepted kernel already reads this absolute ADT property, enables that PPI,
+and dispatches the same ID to rtclock_intr. Its logger and sampler first sleep
+through this timer before flushing or printing SMP. The actual runtime cause
+of the boot stop remains unconfirmed.
+
+Committed generator fix: d251ffd05656e26b95cb03865c02225f2d74cbf8 on
+proshivka/r14-ufs-rootmount-20261104. tools/mkadt.py now emits cas27, sweet19,
+QEMU27; highmem does not alter that choice. README describes the board difference.
+Eight cas/qemu/highmem combinations passed serialization/readback checks and
+comparison against the prior generator; only cas non-QEMU output changes, by one
+timer byte. Source syntax and git diff checks passed. Author and committer are
+proshivka <kasikminecraft@mail.ru>. The commit is local; no remote write occurred.
+
+New image: C:/ports/r14-rootmount/boot-timer27/boot.img, 17772544 bytes,
+SHA256 72be3a1703f75673b46938ac355415c1e2d5f04b7a37fb1ce58bf4b7257bca68.
+New ADT is the donor's existing tree with just its timer property changed, retaining
+its product node and seed. mkpayload.build regenerated the payload from the accepted
+CI kernel and matched the donor everywhere else. Independent review confirmed all
+10 loaded segments, entry, memory, cmdline, shim and Android DTB are identical.
+Full image diff: one ADT byte at 0x1003e44 (13 -> 1b), plus 20 Android v2 ID bytes.
+Android ID and written image readback passed. The source kernel remains
+4ea48875d9d8e3824ba41e80e7d23a9da5a2cd6c / CI 42056718591 attempt 1,
+SHA256 13d385616702cc932989f2c4079e43f9999bb9e303e616575e21ee84183760fe.
+There was no new kernel build or rootfs change.
+
+Evidence outside git: r14-timer27-boot-ready.json, boot-timer27/derivation.json,
+r14-cas-timer-generator-checks.json, r14-cas-timer-fix-commit.json and the original
+raw log/metadata. The configured ufslogsecs=1 is preserved; early logger startup
+can retain its default 10-second interval, so one-second runtime flush is unverified.
+Sampler first output is scheduled after 90 seconds.
+
+The checked manual boot command is copied and read back from the clipboard;
+receipts r14-timer27-command-checks.json / r14-timer27-clipboard.json. It selects
+the private known cas serial, verifies image SHA256 and performs fastboot boot.
+Next: user enters Bootloader from installed recovery, runs that command, waits
+at least 110 seconds, and supplies the latest console lines (especially SMP or
+later launchd progress). manual-boot-r14-timer27.json appears only after fastboot
+accepts it. Hardware effect is still pending; do not attribute old screenshots
+or old timing to timer27. No local device command, flash or CI dispatch occurred.
+
 ### 2026-11-05 — r14: log1s boot observed; corrected recovery read now in clipboard
 
 The user booted the exact one-second-log variant, image SHA256
