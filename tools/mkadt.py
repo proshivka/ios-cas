@@ -2,7 +2,7 @@
 """Build the minimal Apple Device Tree that the SWEET xnu needs to boot.
 
 Only what the early boot path actually reads (see NOTES.md); every MMIO
-address comes from the sweet live FDT. Usage:  mkadt.py OUT.adt [--dump] [--qemu] [--highmem]
+address comes from the board's live FDT. Usage: mkadt.py OUT.adt [--dump] [--qemu] [--highmem] [--cas]
 """
 import hashlib, os, struct, sys
 
@@ -35,7 +35,8 @@ CAS_FB_H = 2340            # Mi 10 Ultra panel is 1080x2340 (sweet: 1080x2400)
 # Internal UFS host (ufshc@1d84000 "ufs_mem"); QEMU virt has none
 UFS, UFS_SIZE = 0x01d84000, 0x3000
 TIMEBASE = 19200000
-VTIMER_INTID = 19
+VTIMER_INTID = 19  # sweet: GIC PPI 3
+CAS_VTIMER_INTID = 27  # cas /soc/timer: GIC PPI 11 + the 16-INTID PPI base
 # QEMU virt (-M virt,gic-version=3 -cpu cortex-a76): GICD/GICR and the generic timer's CNTFRQ
 QEMU_GICD, QEMU_GICR, QEMU_TIMEBASE = 0x08000000, 0x080a0000, 62500000
 QEMU_VTIMER_INTID = 27
@@ -77,13 +78,15 @@ def node(name, props=(), children=()):
 
 def build(seed=None, qemu=False, highmem=False, cas=False):
     """qemu=True: same tree, but with QEMU virt's GIC addresses and CNTFRQ (tools/qemu-sweet.py).
-    cas=True: Xiaomi Mi 10 Ultra (SM8250): 1080x2340 panel, xiaomi,cas / qcom,sm8250 identity."""
+    cas=True: Xiaomi Mi 10 Ultra (SM8250): 1080x2340 panel, cas identity and timer INTID 27."""
     fb_w, fb_h = FB_W, (CAS_FB_H if cas else FB_H)
     phys_base, mem_size = (HIGH_PHYS_BASE, HIGH_MEM_SIZE) if highmem else (PHYS_BASE, MEM_SIZE)
     # Carve the panic log off the top so the kernel never allocates over it.
     panic_base = phys_base + mem_size - PANIC_LOG_SIZE
     mem_size -= PANIC_LOG_SIZE
     gicd, gicr, timebase = (QEMU_GICD, QEMU_GICR, QEMU_TIMEBASE) if qemu else (GICD, GICR, TIMEBASE)
+    vtimer_intid = (QEMU_VTIMER_INTID if qemu else
+                   CAS_VTIMER_INTID if cas else VTIMER_INTID)
     seed = seed if seed is not None else os.urandom(64)
     phandle = iter(range(1, 1000))
     ph = lambda: ('AAPL,phandle', u32(next(phandle)))
@@ -167,7 +170,7 @@ def build(seed=None, qemu=False, highmem=False, cas=False):
         ph(),
         ('compatible', cstr('arm,gic-v3')),
         ('interrupt-controller', b''),
-        ('virtual-timer-intid', u32(QEMU_VTIMER_INTID if qemu else VTIMER_INTID)),
+        ('virtual-timer-intid', u32(vtimer_intid)),
         ('reg', u64(gicd - SOC_BASE, GICD_SIZE, gicr - SOC_BASE, GICR_SIZE)),
     ])
     arm_io = node('arm-io', [

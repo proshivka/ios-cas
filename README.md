@@ -239,7 +239,7 @@ Not in git: partition backups, live device trees, recovery images, Apple firmwar
 ## Key hardware facts
 
 - RAM: payloads use the upper bank, `0x100000000` + `0xfcc00000` (about 3.95 GiB), above Qualcomm's protected carve-outs.
-- GICv3 with security extensions: the timer goes through Group 1 IRQ (virtual timer INTID 19), not FIQ as on Apple silicon.
+- GICv3 with security extensions: the timer uses Group 1 IRQ. The virtual timer is INTID 19 on sweet/SM7150 and INTID 27 on cas/SM8250 or QEMU virt; `mkadt.py` selects it for the board.
 - PSCI through `smc`, 19.2 MHz timer, ARMv8.2 without pointer authentication. MPIDR uses Aff1 for the core number.
 - Panel: 1080×2400 DSC video mode, continuous splash from ABL, no refresh kick needed.
 - Touch: Goodix GT9896 at I²C `0x5d` on QUP SE7 (`0xa84000`), powered by PM6150L LDO11 through RPMh.
