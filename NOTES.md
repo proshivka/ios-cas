@@ -1,3 +1,28 @@
+### 2026-11-05 — r14: earlydiag boot observed through nine minutes; full persistent log requested
+
+manual-boot-r14-earlydiag.json confirms the user sent the exact earlydiag image
+8ae323de0d81147e729b0c4e6628506e9862a31f3b78b45ac03f8685dacafbb7 at
+2026-11-05T17:25:06.0402994Z. The new screen transcription again ends with
+DONE UMD_INIT, exec dirs_cleaner / xpcroleaccountd / init_featureflags. The user
+clarifies these were the screen contents nine minutes after boot. Foreground
+setup fails (booted user 501, current foreground 502, next session -1), and
+initial persona lookup failures are followed by successful allocations. Those
+errors did not prevent UMD completion. No later exec, SMP, IOK or panic is in
+the supplied excerpt. A stopped global kernel or specific FeatureFlags wait
+is still unproven; persistent-log flushing has not yet been verified.
+
+New evidence outside git: r14-rootmount/boot-r14-earlydiag-console-user.txt and
+r14-earlydiag-boot-observed.json retain the new transcription and timing.
+The checked read-only recovery log command is now in the clipboard, replacing
+the used boot command (r14-earlydiag-recovery-clipboard.json). User enters the
+installed recovery and runs it to retrieve the last 1025 userdata blocks through
+binary ADB stdout, validate the SWEETLOG header, decode and save the full console.
+Next inspect flush sequence, actual diagnostic arguments and all SMP samples.
+If the header is absent, record that result; do not claim a flushed log or infer
+the reason from the screenshot. Do not repeat the same temporary boot or rebuild.
+No new kernel/image, rootfs edit, network request or local device command occurred.
+Compiled source remains 4ea48875d9d8e3824ba41e80e7d23a9da5a2cd6c / CI 42056718591.
+
 ### 2026-11-05 — r14: UMD initialization completed; late boot task and persistent console diagnostics ready
 
 The latest user transcription contains DONE EARLYBOOT SETUP / DONE UMD_INIT,

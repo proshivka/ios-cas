@@ -1,3 +1,20 @@
+## Последнее наблюдение 2026-11-05: earlydiag загружен; те же строки через девять минут
+
+Пользователь загрузил earlydiag SHA256
+8ae323de0d81147e729b0c4e6628506e9862a31f3b78b45ac03f8685dacafbb7;
+manual-boot-r14-earlydiag.json: fastboot accepted 2026-11-05T17:25:06.0402994Z.
+В новом отрывке снова DONE UMD_INIT и exec init_featureflags. Пользователь
+уточнил: это содержимое экрана через девять минут. Ошибки foreground/persona
+не остановили UMD; причина отсутствия дальнейшего прогресса пока не установлена.
+SMP/IOK в отрывке нет, полный журнал ещё не получен, его flush не проверен.
+
+Следующий шаг — read-only чтение журнала в установленном recovery. Проверенная
+inline-команда уже в буфере; receipt r14-earlydiag-recovery-clipboard.json.
+Новый отрывок и timing сохранены в boot-r14-earlydiag-console-user.txt /
+r14-earlydiag-boot-observed.json. После получения читать полный SWEETLOG и SMP,
+не повторять этот boot и не пересобирать ядро. Источники CI остаются прежними;
+операции телефона выполняет только пользователь. Все подробности в NOTES.md.
+
 ## Актуально на 2026-11-05: r14, launchd и UMD работают; диагностика после init_featureflags
 
 Последние присланные строки: DONE EARLYBOOT SETUP / DONE UMD_INIT, затем
