@@ -1,3 +1,33 @@
+## Последнее на 2026-11-06: userdata стёрта; готовы команды восстановления rootfs
+
+Пользователь сообщил fastboot -w и изменения system/userdata/metadata/cache,
+vbmeta/vbmeta_system во время портов Android/HarmonyOS. Старый установленный iOS
+rootfs больше не считать текущим. После просьбы остановиться пользователь сам
+возобновил работу: он в TWRP и запросил команды повторной прошивки rootfs.
+
+Полные актуальные SHA256 сохранённых .simg и boot-timer27 совпали с эталонами.
+Rootfs: C:/ports/r13-rootfs/ci-41798068342/image/ios16-root-20H392-r13-native.simg,
+12145268800 байт, fc775be3...373286; полный RAW/FILL, без DONT_CARE, разворачивается
+в прежние 16 GiB e7a8eedc...0e8fdf. Boot: C:/ports/r14-rootmount/boot-timer27/boot.img,
+72be3a17...7bca68. Полные хеши: r14-rootmount/r14-restore-files-verified.json.
+
+В буфере именно первый блок ПРОШИВКИ, проверен чтением обратно. Текст:
+r14-rootmount/r14-rootfs-restore-command.txt. Проверяет serial из приватного
+receipt, cas/root recovery, userdata 99989061632 байта и хеш .simg; затем
+adb reboot bootloader и fastboot -S128M flash userdata.
+
+После ROOTFS_FLASH_OK пользователь заново входит в fastboot кнопками Power + Vol−.
+Второй блок: r14-rootmount/r14-timer27-after-restore-command.txt; проверяет receipt
+прошивки и хеш boot, выполняет временный fastboot boot. Ждать минимум 110 секунд,
+нужны последние строки прошивки и новая консоль/фото. При ошибке guard/flash не
+запускать зависимый boot. Ожидаемые файлы после команд: manual-rootfs-restore-r14.json
+и manual-boot-r14-timer27.json. Пока новых hardware receipts/логов нет.
+
+Команды проверены PS5.1/AST; r14-restore-command-checks.json и
+r14-rootfs-restore-clipboard.json вне git. Локально команд устройства не выполняли.
+Rootfs CI 41798068342 / b6c0ec10, kernel CI 42056718591 / 4ea48875, IRQ-fix d251ffd.
+Эффект timer27 на аппаратуре пока не проверен. Ниже сохранена история до wipe.
+
 ## Последнее на 2026-11-05: найден IRQ 19/27; готов отдельный boot-timer27
 
 Исправленный recovery pull прочитал ровно 4198400 байт хвоста userdata; все байты

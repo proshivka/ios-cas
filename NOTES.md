@@ -1,3 +1,46 @@
+### 2026-11-06 — r14: userdata wiped during Android ports; rootfs restore commands ready
+
+The user reports running fastboot -w and modifying system, userdata, metadata,
+cache, vbmeta and vbmeta_system while testing HarmonyOS/GSI ports. The previously
+installed iOS HFS root must no longer be treated as present. These modifications
+are user reports, not new device observations. After asking to stop all work,
+the user has now resumed in TWRP and explicitly requested commands to reinstall
+the iOS rootfs themselves and identify the results to send.
+
+Current full-file SHA256 checks passed for the existing 12145268800-byte sparse
+rootfs (fc775be3f8c341b2015c56abfae7ecbdb09904035aa4f08d95355b4fde373286)
+and timer27 boot image (72be3a1703f75673b46938ac355415c1e2d5f04b7a37fb1ce58bf4b7257bca68).
+The sparse file expands to the accepted 16 GiB image, SHA256
+e7a8eedc2421c009cd82dc96c5d8dd1135e840d6f7400e018a6dd82a900e8fdf;
+its accepted format covers every block with RAW/FILL and no DONT_CARE.
+Evidence outside git: r14-rootmount/r14-restore-files-verified.json.
+
+Two direct PowerShell command blocks were prepared and passed PS5.1 syntax and
+native-operation AST checks. Flash block checks the private known cas target,
+root recovery shell, current userdata size against the last observed 99989061632
+bytes, and sparse SHA256; then adb reboot bootloader and one fastboot -S128M
+flash userdata. This uses the verified sparse file to avoid the earlier x86
+fastboot raw-image allocation failure. The first block is already copied and
+verified in the clipboard. Reviewable text and receipts outside git:
+r14-rootfs-restore-command.txt, r14-restore-command-checks.json and
+r14-rootfs-restore-clipboard.json.
+
+After ROOTFS_FLASH_OK the user should manually re-enter the bootloader with
+Power + Volume Down, because earlier Xiaomi ABL sessions hung on the first
+command after a large flash. The separate r14-timer27-after-restore-command.txt
+checks the fresh restore receipt and boot image hash, then fastboot boot.
+Expected user-generated receipts: manual-rootfs-restore-r14.json and
+manual-boot-r14-timer27.json. A flash acceptance receipt records fastboot success,
+not a full device readback. These receipts have not been produced in this work.
+
+Next: user performs the two stages, waits at least 110 seconds after boot, and
+sends the last flashing lines and a fresh console photo/transcription. If a guard
+or native operation fails, inspect that error before dependent steps.
+No device command, partition write, download, new image or CI dispatch was
+performed locally. The rootfs source/run remain b6c0ec10 / 41798068342; kernel
+source/run remain 4ea48875 / 42056718591. Generator fix is d251ffd05656e26b95cb03865c02225f2d74cbf8.
+Timer27 hardware effect is still pending; pre-wipe observations describe history.
+
 ### 2026-11-05 — r14: cas virtual-timer mismatch confirmed; INTID 27 temporary image ready
 
 The corrected recovery pull completed at 2026-11-05T18:03:05Z. The file
