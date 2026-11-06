@@ -1,3 +1,25 @@
+### 2026-11-06 — r14: log60s recovery read is byte-for-byte the old snapshot
+
+The new read completed at 2026-11-06T20:03:29.548408Z. Its raw file is
+sweetlog-timer27-log60s-8865a2875d7b4b9992a78a6a1aabd20d.bin,
+4198400 bytes, SHA10d5a6c2...20297a9f. Independent comparison confirms EVERY
+byte equals the earlier timer27 capture, including total 23994, sequence 1 and
+all-zero ring bytes beyond that total. The reader succeeded; its new-argument
+guard correctly refused to attribute the old console to the log60s boot.
+Evidence outside git: the new .bin/.json/.txt/-decoded.json and
+r14-timer27-log60s-capture-analysis.json. These FIPS lines are old captured
+output, not newly established screen progress or a demonstrated FIPS hang.
+
+The log60s temporary-boot receipt remains transfer acceptance only. No fresh
+logger write is observed in the sampled area; its runtime cause remains open.
+The user requests another boot to capture the current iOS screen. The same
+checked log60s boot command is copied and read back exactly, replacing the
+recovery reader in the clipboard; r14-timer27-log60s-clipboard.json is updated.
+Next: read the user's original photo directly, ideally including boot arguments
+and logger startup as well as the final lines. Do not ask for OCR/transcription.
+Then choose bounded logger phase and timer/sampler instrumentation if still
+needed. No new image, local device command, network request or CI dispatch.
+
 ### 2026-11-06 — r14: delayed-log temporary boot accepted; recovery capture pending
 
 manual-boot-r14-timer27-log60s.json now records fastboot acceptance at
