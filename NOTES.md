@@ -1,3 +1,89 @@
+### 2026-11-06 — r14: real persistent console verified; only first snapshot survives
+
+The corrected recovery read now produced a valid SWEETLOG. Raw file:
+r14-rootmount/sweetlog-timer27-8c04289e2a944627bc7371c6bd9e4a59.bin,
+4198400 bytes, SHA256
+10d5a6c2c29fe3f9d5bb8ce33b51650148559b0ba4ef534146064c8c20297a9f.
+Read receipt is dated 2026-11-06T19:07:17Z and associates the capture with
+manual-boot-r14-timer27.json / image 72be3a17...57bca68. The on-disk v1 header
+has ring size 4194304, total 23994 and sequence 1; it has no embedded boot hash
+or boot timestamp. Header/body and the banner's absolute block 0x1a078ff match
+the recorded partition-relative read at block 24410367 of userdata.
+
+Independent SHA/header parsing and UTF-8 decoding match the existing .txt.
+The ring did not wrap. Its last nonzero byte is offset 23993; every byte beyond
+the header's total is zero. There are no hidden later UMD, dirs_cleaner,
+xpcroleaccountd, init_featureflags, SMP or write-failed records in the raw ring.
+Evidence outside git: the original .bin/.json/.txt/-decoded.json and
+r14-timer27-persistent-log-analysis.json. Originals are preserved.
+
+The captured console proves HFS journal replay, mountroot return 0, Apple
+launchd hello/bootstrapper execution, normal boot-task progression, no SEP,
+mobile_obliterator returning 0 and MSUEarlyBootTask having nothing to do. It
+ends during FIPS after the hkdf component passes, about 13.5 seconds into boot.
+The user's earlier timer27 screen excerpt reached DONE UMD_INIT and late exec
+tasks. This disk snapshot is earlier than that screen; do not diagnose a FIPS
+hang from its final line or claim that the saved file contains the late stall.
+
+Exact accepted buildtree sweet_ufs.c SHA74391b7b...3705d4 shows header write at
+861 precedes ufs_sync_cache at 864, unlock at 866 and error-stop at 868. Thus
+sequence 1 does NOT establish successful cache sync. An error-stop message
+would be printed after this snapshot and would not be saved by the stopped
+writer. Remaining candidates are writer error/exit, cache-sync or shared-lock
+blockage, and a later timed-wait/scheduling failure. A fourth possibility is
+later output bypassing _cnputs: if sweet_log_total stops changing, the writer
+skips new flushes normally. None is runtime-confirmed.
+
+New trace corrects the older early-default10 caveat for THIS boot: early log
+explicitly declines the initially read-only path, then normal writable init
+starts the writer, whose start reads ufslogsecs=1. First header proves return
+from its first tsleep; it does not prove later timed wakeups. ufscache and
+ufswait are absent and default to 0, so the optional 200-us sleepable UFS poll
+is not the leading explanation on this image. Normal polling has a 5-second
+mach_absolute_time deadline, conditional on counter progress.
+
+SMP absence in this 13.5-second snapshot does not establish a sampler failure:
+the first sample is due after 90 seconds. RuntimeGic27LineSeen=false is also
+not a negative timer test: that banner uses kprintf/PE_kputc while persistent
+console append hooks _cnputs. Keep the configured timer27 image and receipt
+separate from claims of stable runtime interrupt delivery.
+
+Next diagnostic is now concrete and ready without CI: a temporary variant at
+C:/ports/r14-rootmount/boot-timer27-log60s/boot.img, 17772544 bytes, SHA256
+a20a89540b3e261247962dce77aabe56c45194da3c31fc2edcb58849a1387999.
+Only ufslogsecs=1 -> ufslogsecs=60 and Android v2 ID change. The accepted kernel
+and original payload regenerated exactly; the new payload also regenerates
+from that kernel. All 10 loaded segments, shim/DTB/ADT, memory, entry and other
+arguments are byte-identical. Android ID and written image readback passed.
+Cmdline is 577/608 bytes. This is a delayed-write A/B experiment, not a proven
+fix. Image evidence: r14-timer27-log60s-boot-ready.json and the derivation in
+boot-timer27-log60s. Original timer27 image and log evidence are retained.
+
+Reviewable manual commands: r14-timer27-log60s-boot-command.txt and
+r14-timer27-log60s-recovery-command.txt. The boot block checks the existing
+restore receipt, private known cas target and image SHA; its only native device
+operation is targeted fastboot boot. The user enters Bootloader from installed
+TWRP, runs it and observes for at least 150 seconds. With logger startup around
+12.5 seconds, the first/second flush would be around 72.5/132.5 seconds and the
+existing sampler around 102.5 seconds; these are expected timings, not observed
+runtime results. Then the user returns to installed TWRP and runs the reader.
+
+The reader uses the corrected binary DD path with remote stderr suppressed,
+retains raw data on errors and checks for ufslogsecs=60 in the decoded boot
+arguments. A valid old header without that marker is saved but explicitly not
+attributed to the new boot. PS5.1 syntax/native operation AST, Python syntax,
+the fresh-argument guard and independent written-image byte comparison passed.
+Receipt: r14-timer27-log60s-command-checks.json. These commands were prepared,
+not executed, and were not copied to the clipboard in this milestone.
+
+Next: compare fresh console/stop timing and sweetlog-timer27-log60s-* data.
+If the A/B result does not separate the candidates, add bounded first-two-cycle
+phase traces around logger wake, shared UFS mutex, header-write result and
+SYNCHRONIZE CACHE enter/result, with a faster sampler heartbeat. No kernel
+change, rootfs edit, device command, network request or CI dispatch occurred.
+Accepted kernel/run remain 4ea48875 / 42056718591 attempt 1. Boot-stall cause
+and later log capture remain unfinished; UI success has not been observed.
+
 ### 2026-11-06 — r14: timer27 boot after rootfs restore stops at late boot tasks; full log requested
 
 New user-generated receipts now exist. manual-rootfs-restore-r14.json records
