@@ -1,3 +1,28 @@
+### 2026-11-06 — r14: delayed-log temporary boot accepted; recovery capture pending
+
+manual-boot-r14-timer27-log60s.json now records fastboot acceptance at
+2026-11-06T19:29:58.2159972Z for the verified a20a8954...1387999 image,
+source 4ea48875 / CI 42056718591 attempt 1, timer27 and ufslogsecs=60.
+This is transfer/temporary-boot acceptance, not evidence of continuous logging
+or runtime boot progress. No sweetlog-timer27-log60s-* capture exists yet.
+
+The user is tired of photographing and manually transcribing console output.
+Use saved local .bin/.txt files directly; after running the reader they need
+only say "ready". If a screen photo is needed, read the original image rather
+than asking the user to extract its text. A single optional backup photo before
+returning to recovery can retain the screen evidence if the new disk capture
+is stale. Do not promise this is the last photo before persistence is verified.
+
+The recovery reader is now copied and exact readback verified at about
+2026-11-06T20:00Z, replacing the boot command in the clipboard. Receipt:
+r14-rootmount/r14-timer27-log60s-recovery-clipboard.json; reader SHA256
+ced82d5cb8b705ef26b54cecb8922ac8177727ee1a535db8f031ba6c30009079.
+The minimum 150-second observation window has elapsed since the boot receipt.
+Next: user enters installed TWRP and runs the clipboard reader; inspect the
+new argument marker, header total/sequence and late UMD/SMP output directly
+from the resulting files. No local device command or new image change here.
+The capture reader works; reliable persistence of later console remains open.
+
 ### 2026-11-06 — r14: real persistent console verified; only first snapshot survives
 
 The corrected recovery read now produced a valid SWEETLOG. Raw file:
