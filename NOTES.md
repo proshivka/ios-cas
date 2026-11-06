@@ -1,3 +1,46 @@
+### 2026-11-06 — r14: timer27 boot after rootfs restore stops at late boot tasks; full log requested
+
+New user-generated receipts now exist. manual-rootfs-restore-r14.json records
+fastboot sparse flash acceptance at 2026-11-06T17:29:19.3355870Z, expected sparse
+SHA fc775be3...373286 and userdata size 99989061632 bytes; no full device readback.
+manual-boot-r14-timer27.json records temporary boot acceptance at
+2026-11-06T18:24:06.9395989Z for image
+72be3a1703f75673b46938ac355415c1e2d5f04b7a37fb1ce58bf4b7257bca68,
+compiled source 4ea48875 / CI 42056718591 attempt 1, associated with that restore.
+
+The new user transcription contains DONE UMD_INIT, dirs_cleaner EINVAL, exec
+xpcroleaccountd and exec init_featureflags. Launchd logging initializes around
+13.946 seconds and emits System Event boot-task records. User explicitly confirms
+the screen stopped on those lines; observation duration in seconds was not given.
+The excerpt contains no SMP banner, logger banner, runtime GIC ID or panic.
+The raw System Event counter range 269158787..269715822 corresponds to
+14.018687..14.047699 seconds at 19.2 MHz, a ~29 ms window; it proves an increasing
+counter during those events, not timer IRQ delivery or timed-wait wakeups.
+Neither a global kernel hang nor a specific init_featureflags wait is established.
+
+Evidence outside git: boot-r14-timer27-console-user.txt and
+r14-timer27-boot-observed.json. Earlier persona lookup/notification errors precede
+the UMD completion marker. Prior pristine dirs_cleaner analysis allows return 0
+after EINVAL. Possible late-task waits and logger/sampler scheduling or timer
+delivery remain candidates. No code change is justified before the new full trace.
+
+Read-only recovery command is now copied and verified in the clipboard:
+r14-timer27-recovery-pull-command.txt, r14-timer27-recovery-command-checks.json and
+r14-timer27-recovery-clipboard.json. It checks restore/boot receipts, known cas
+root recovery, current userdata geometry and reviewed decoder hash; captures the
+last 1025 blocks through binary Python subprocess stdout, with remote DD stderr
+redirected to /dev/null. PS5.1/Python syntax and Windows argv probe passed. An
+initial validation wrapper had nested here-string delimiters; validation encoding
+was corrected before copying. No device command was executed in these checks.
+
+Next: user returns to installed TWRP and runs the clipboard command. It retains
+raw sweetlog-timer27-<guid>.bin and metadata even on an invalid/short header;
+valid SWEETLOG is decoded to .txt and -decoded.json. Inspect full startup lines,
+logger entry/errors, header total/sequence, SMP --- sample and process wait states.
+If the ring wrapped, absence of an early marker does not prove it never occurred.
+No new recovery log has been read yet. No local device command, image/rootfs edit,
+network request or CI dispatch occurred; timer27 runtime effect remains unresolved.
+
 ### 2026-11-06 — r14: userdata wiped during Android ports; rootfs restore commands ready
 
 The user reports running fastboot -w and modifying system, userdata, metadata,

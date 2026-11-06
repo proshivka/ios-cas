@@ -1,3 +1,31 @@
+## Последнее на 2026-11-06: rootfs восстановлен, timer27 принят; экран стоит, нужен полный журнал
+
+Новые receipts подтверждают fastboot acceptance: rootfs 2026-11-06T17:29:19Z
+(userdata 99989061632 байта, .simg fc775be3...373286, без полного readback);
+boot-timer27 2026-11-06T18:24:06Z, SHA256
+72be3a1703f75673b46938ac355415c1e2d5f04b7a37fb1ce58bf4b7257bca68,
+kernel source 4ea48875 / CI 42056718591 attempt 1.
+
+Новая транскрипция снова содержит DONE UMD_INIT, dirs_cleaner EINVAL,
+exec xpcroleaccountd / init_featureflags; появились launchd logging initialized
+и System Event boot tasks. Пользователь подтвердил, что экран остановился.
+Точное время наблюдения не указано. SMP/логгер/GIC-ID/panic в отрывке нет.
+Счётчики событий соответствуют ~14.019–14.048 секунды, а не всему времени ожидания;
+они не доказывают доставку IRQ или пробуждение tsleep. Точная причина пока неизвестна.
+
+В буфере уже НОВАЯ команда ЧТЕНИЯ из установленного TWRP:
+r14-rootmount/r14-timer27-recovery-pull-command.txt. Проверяет receipts/cas/root,
+размер и путь userdata, hash декодера; читает последние 4198400 байт бинарно,
+подавляет удалённый stderr DD, сохраняет raw+metadata даже при плохом header.
+PS5.1/Python/argv проверены; вложенные here-strings тестовой обёртки исправлены.
+Команд устройства локально не выполняли. Новый kernel/CI/rootfs не создавался.
+
+Далее пользователь возвращается в TWRP и запускает блок. Читать новые
+sweetlog-timer27-*.bin/.json/.txt/-decoded.json; искать header seq/total, логгер,
+SMP и состояния launchd/init_featureflag/xpcroleaccountd. Нового raw пока нет.
+Транскрипция: boot-r14-timer27-console-user.txt; receipt: r14-timer27-boot-observed.json.
+Не делать новое изменение кода до этой трассы. Подробности в NOTES.md.
+
 ## Последнее на 2026-11-06: userdata стёрта; готовы команды восстановления rootfs
 
 Пользователь сообщил fastboot -w и изменения system/userdata/metadata/cache,
