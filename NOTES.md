@@ -1,3 +1,37 @@
+### 2026-11-07 — r14: checked implementation committed; single-dispatch CI launcher ready
+
+Implementation commit 887dc7ab6bfb2af2c0cfb4064e0538782cca4eb9 contains
+patch 0091 and its documentation, authored and committed as proshivka.
+The worktree was clean after that commit. Native compilation and late-log
+persistence are still unverified; no GitHub run was started from this environment.
+
+The external launcher is r14-rootmount/phase-wake-fixtures/launch_ci.py;
+the user command is launch-ci-command.txt in the same directory. It validates
+the exact clean HEAD/branch/origin, commit identity and patch checksum before
+reading credentials, verifies GitHub login proshivka before remote writes,
+pushes without force and checks the remote branch SHA. It selects only runs
+matching source/branch/workflow, reuses one if present, and atomically records
+dispatch intent before sending a new run. An ambiguous failed dispatch cannot
+silently generate a second one. --wait streams Actions status, then retains
+exact final state, artifact metadata and full build log without buffering the
+large log in Python memory. It never accepts a kernel or runs a device command.
+
+The launcher passed 19 offline fixtures, including stale/malformed run lists,
+wrong account/source, existing runs, delayed visibility, ambiguous dispatch,
+atomic intent, remote-SHA mismatch, watcher interruption and failed-build
+diagnostics. Checks read no credentials and performed zero network/device calls.
+Evidence: phase-wake-fixtures/launcher-check-result.json; the source/patch
+model checks and debugger approval remain recorded in the entry below.
+
+This handoff documentation adds no kernel changes. After committing it, pin
+the launcher's EXPECTED constant and phase-wake-fixtures/ci-ready.json to the
+final publication HEAD. The exact clipboard-copy receipt is clipboard.json
+beside those files. CI is PENDING_USER_LAUNCH because GitHub sockets are blocked
+here. Next: user pastes the checked command into PowerShell; after success,
+inspect the saved artifacts/buildtree and verify the new compiled kernel
+before building another temporary boot. No additional photograph is required
+for this step, and the 150-second observation window is already confirmed.
+
 ### 2026-11-06 — r14: 150-second screen stall; exec/writer diagnostics ready for CI
 
 The user reports waiting at least 150 seconds after the repeat timer27/log60s
