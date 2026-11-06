@@ -1,3 +1,62 @@
+### 2026-11-07 — r14: diagnostics CI passed; pinned download and boot preparation ready
+
+User-launched xnu run 42294101668, attempt 1, source
+a8ebc120f36835465d183ab8b7c531d22f512c02, completed successfully at
+2026-11-06T21:28:34Z. Native Build and buildtree packaging both succeeded.
+Evidence is r14-rootmount/phase-wake-fixtures/ci-42294101668-attempt-1:
+ci-state.json, ci-artifacts.json and the 49941667-byte full build.log.
+The Node.js 20/24 annotation is nonfatal; it did not prevent compilation.
+
+Independent log inspection confirms patch 0091 application at line 678,
+sweet_ufs.c/sweet_sample.c/kern_exec.c compiles at 17159/17733/194634 with
+ARM64_BOARD_CONFIG_SWEET, -arch arm64 and XNU_KERNEL_PRIVATE, then the
+linked kernel at 273715. Collect reports kernel.development.sweet size
+17205368. Full-log SHA256 is
+951635e7157ac8e2c04685896a5a4df8eab2cdcfcbf548968c7aa47b54ab36a1.
+Receipt: phase-wake-fixtures/ci-log-verification.json. Artifact bytes are
+not yet locally available, so compiled-source and kernel acceptance remain pending.
+
+Pinned artifacts from that exact source/run are xnu-kernel ID 13542806131,
+60553920 bytes, ZIP SHA256
+77151d638f16b1a76b9b69455b07efea14953c152a9a872f4746d22e16715c47;
+and xnu-buildtree ID 13541593682, 23095097 bytes, ZIP SHA256
+9ce75c60c5ecc9661020ea3083a9dbd08b9d74566076dfff45706e25cba6b609.
+The external download_artifacts.py validates local and live run/step/artifact
+identity, verifies both entire archives, extracts only three exact members and
+checks the kernel SHA256SUMS/collected size. It streams gh API binary output
+directly to a file, retaining failed partials. Six offline checks passed;
+no credentials, network or device calls occurred in those checks.
+
+External prepare_boot.py verifies the pinned archives and extracted bytes,
+compares all three modified TUs from the buildtree to reviewed LF sources,
+checks the plain arm64 Mach-O and loaded diagnostic strings, and requires a
+native BL call to sweet_log_exec_note. It then uses the accepted timer27/log60s
+Android v2 container (a20a8954...1387999), preserving shim/DTB/ADT/RAM mappings
+and replacing only the payload and its dependent size/ID. The packer is checked
+against tools at the exact CI source and reproduces the previous accepted
+payload and entire image byte for byte. Android ID corruption and an attempt
+to accept the old kernel as new diagnostics are rejected. Local packer receipt:
+phase-wake-fixtures/boot-packer-check-result.json. New-kernel execution of this
+pipeline is still pending the download; do not claim a new boot.img exists yet.
+
+The combined user command is
+phase-wake-fixtures/download-and-prepare-command.txt. It downloads, verifies
+and prepares C:/ports/r14-rootmount/boot-phasewake-42294101668/boot.img,
+without executing device commands. Its clipboard receipt is
+phase-wake-fixtures/prepare-clipboard.json. Successful preparation writes
+phase-wake-fixtures/boot-ready.json and the evidence directory's
+kernel-accepted.json. Inspect those files and the final image directly before
+giving the user a known-serial cas temporary-boot command. The new command line
+uses 1-second writes, exec/phase diagnostics, sampler 15/30 and an image-specific
+sweetlogid marker, with shortened late-task selectors and no truncation.
+Observe at least 150 seconds, then collect the log in recovery using that marker.
+The installed rootfs restore receipt still records the 16GiB iOS image transfer
+at 2026-11-06T17:29:19Z; it is transfer acceptance, not full device readback.
+No rootfs rewrite is part of this diagnostic. Hardware late logging and the
+init_featureflags stall remain unconfirmed. GitHub sockets remain blocked here;
+the user runs the prepared command in their PowerShell. No new CI dispatch or
+local device command was performed. All Git identity remains proshivka.
+
 ### 2026-11-07 — r14: checked implementation committed; single-dispatch CI launcher ready
 
 Implementation commit 887dc7ab6bfb2af2c0cfb4064e0538782cca4eb9 contains
