@@ -166,6 +166,16 @@ What the less obvious boot-args do:
 | `sweetfb_noconsole=1` | Stop drawing kernel text over the GUI. It still goes to the persistent log; panics are drawn |
 | `sweetfb_hz=30` | Panel refresh rate of the CPU copy |
 | `sweettouch=0`, `sweetkeys=0` | Disable the touch or button driver |
+| `sweetlog=1 ufslogsecs=1` | Enable the persistent console writer; interval is 1..60 seconds, default 10 |
+| `ufslogexec=1` | With patch 0091, request an initial snapshot and wake the writer after dirs_cleaner, xpcroleaccountd and init_featureflags exec markers |
+| `ufslogtrace=1` | With patch 0091, trace the first eight writer cycles through wait, lock, writes and cache sync |
+| `sweetsamplefirst=15 sweetsampleinterval=30` | With patch 0091, adjust sampler delays; defaults remain 90/120 seconds |
+
+The exec hook only signals the existing writer; the writer retains ownership of
+the UFS lock and DMA buffer. A post-write or post-sync trace may appear only in
+the next saved snapshot. Sampler delays are configurable, but sampling itself
+can wait on process transitions or user-page faults. These flags provide
+diagnostics; persistence of late output must be verified on the device.
 
 ### 4. Flash the root and boot
 

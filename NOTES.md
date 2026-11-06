@@ -1,3 +1,68 @@
+### 2026-11-06 — r14: 150-second screen stall; exec/writer diagnostics ready for CI
+
+The user reports waiting at least 150 seconds after the repeat timer27/log60s
+boot with no screen changes. The supplied screen transcription is retained
+outside git as r14-rootmount/boot-r14-timer27-log60s-repeat-console-user.txt;
+r14-timer27-log60s-repeat-boot-observed.json records its checksum and context.
+It shows UMD early setup completion, dirs_cleaner EINVAL messages, subsequent
+xpcroleaccountd/init_featureflags execs, launchd logging at 14.366168 seconds
+and the init_featureflags boot-task start at 14.385612. The fragment contains
+no boot arguments, logger banner or SMP output. Task start is observed;
+the cause of the stall is NOT established. Do not bypass that boot task.
+The latest local temporary-boot receipt is dated 2026-11-06T20:33:27.6437457Z,
+image a20a8954...1387999, accepted kernel source 4ea48875 / CI 42056718591.
+Association with the screen comes from user context, not embedded boot ID.
+Another photo or OCR transcription is not needed for the next diagnostic.
+
+The old raw capture remains unchanged (23994 bytes of console, sequence 1).
+The recovery reader works, but fresh late persistence has not been proven.
+Patch 0091-sweet-exec-log-checkpoints.patch, SHA256
+742c99dbfcdd51bd91a9775c641793f1001d3ef73188b9af9fa871d790f8afa7,
+adds opt-in ufslogexec=1 and ufslogtrace=1. Exec notifications for
+dirs_cleaner/xpcroleaccountd/init_featureflags only set atomic pending and
+wake the existing writer; they perform no disk I/O. Pending is seeded before
+both existing start paths. Register-wait then atomic-exchange closes the
+lost-wake window. The writer retains its UFS lock/DMA ownership, ring bounds,
+header/sequence/cache-sync/error-stop paths. Phase traces cover the first
+eight cycles; post-write/post-sync lines may survive only in a later flush.
+Default-off retains the old timed wait. Sampler defaults remain 90/120 seconds;
+sweetsamplefirst=1..90 and sweetsampleinterval=1..120 are optional overrides.
+Sampling itself can block on proc transitions and user-page faults: a sample
+banner proves wakeup, not completion of the sampling pass.
+
+Validation: the existing debugger's read-only static review approved the
+actual patch against the accepted buildtree, including API availability under
+the real XNU_KERNEL_PRIVATE compile flags. The completed local checker at
+r14-rootmount/phase-wake-fixtures/check_patch.py verifies accepted-source
+digests, fresh LF Git apply/index/reverse checks and byte-identical modified
+sources. It fingerprints unchanged UFS helpers and confirms the writer's I/O,
+sequence and error path is identical after removing diagnostic statements.
+Scheduling-model checks pass: 15/420 one/two-producer interleavings, 105/3780
+with a timer, five timer-only cases, initial seed and immediate wait returns.
+Calibration detects the deliberately broken check-before-register ordering.
+Receipt: phase-wake-fixtures/check-result.json. These are source/model checks,
+NOT a native kernel compile. README flags were inserted as ASCII bytes;
+existing encoding and every pre-existing byte were retained.
+
+Native compilation and hardware results are PENDING. WSL cannot start in
+this environment (E_ACCESSDENIED), and GitHub sockets are forbidden here.
+Those are environment restrictions, not automatic approval-review rejection.
+Do not repeat blocked requests or claim device logging is fixed. No local
+device commands, new CI dispatch or new temporary image have run here.
+Next: publish this checked source as proshivka and run xnu.yml on the existing
+branch, macos-15-intel / macOS 13.5 / SWEET / DEVELOPMENT. The external
+phase-wake-fixtures/ci-ready.json records the exact source SHA after commit;
+the prepared launcher verifies source/account/remote, reuses an exact run or
+records intent before a single dispatch, and retains run/log metadata.
+After CI succeeds, verify artifact digests and compiled source/kernel
+provenance before packaging a new temporary boot. Suggested diagnostics:
+ufslogexec=1 ufslogtrace=1 ufslogsecs=1 sweetsamplefirst=15
+sweetsampleinterval=30, selectors limited to launchd and the three late tasks.
+Use init_featureflag for the sampler and full init_featureflags for IOK/null.
+Keep the payload command line within 608 bytes and reuse the installed rootfs.
+Baseline before this changeset: e2c5ee6. All Git identity remains
+proshivka <kasikminecraft@mail.ru>; raw console/device artifacts stay outside git.
+
 ### 2026-11-06 — r14: log60s recovery read is byte-for-byte the old snapshot
 
 The new read completed at 2026-11-06T20:03:29.548408Z. Its raw file is
