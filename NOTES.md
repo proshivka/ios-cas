@@ -1,3 +1,52 @@
+### 2026-11-07 — r14: new kernel and phasewake image independently verified; boot pending
+
+The user completed download and preparation at 2026-11-07T06:49:47Z.
+Both archive digests match run 42294101668 attempt 1 / source a8ebc120.
+The new plain arm64 kernel is 17205368 bytes, SHA256
+213d4237820f19eeaff7b257e786d4ad95298f65039f95bdb06f324fb2837af6,
+UUID 8A944672-B2A9-32B9-81D6-B6464D5C80E5. All three compiled TUs match
+the reviewed source manifest. Final image is
+C:/ports/r14-rootmount/boot-phasewake-42294101668/boot.img, 17772544 bytes,
+SHA256 7efe7d8428271e5b02ea72ca8797eb757cf4d6bdb3117d785cd8e92886dd2e55.
+Its 453-byte command line includes sweetlogid=7349b024dc0c421b,
+ufslogexec=1 ufslogtrace=1 ufslogsecs=1 and sampler delays 15/30.
+
+Root independently rechecked both whole ZIPs, extracted bytes, tar sources,
+kernel and image hashes, Android v2 ID, all ten loaded kernel segments,
+diagnostic strings in sections actually loaded by the shim, and the native
+BL at 0xfffffe00077ea244 to sweet_log_exec_note. Shim, DTB, ADT, managed RAM
+and timer27 are unchanged. Evidence: phase-wake-fixtures/boot-ready.json,
+image-verified-locally.json and ci-42294101668-attempt-1/kernel-accepted.json.
+KernelAccepted is a local source/binary/image result, NOT a hardware result.
+Do not rerun the image preparation command: this exact image is now ready.
+
+User device commands are prepared outside git in
+phase-wake-fixtures/phasewake_device.py, with boot-command.txt and
+collect-command.txt wrappers. Boot selects the existing private known serial,
+checks fastboot product cas and the pinned image, then runs only temporary
+fastboot boot. Acceptance writes manual-boot-r14-phasewake.json. The user
+performs this; no local device command has run. Exact clipboard state is
+recorded in phase-wake-fixtures/boot-clipboard.json.
+
+After at least 150 seconds on the new boot, the user returns to installed
+TWRP and runs the collection wrapper. It reads only the final 4198400 bytes
+of the unchanged 99989061632-byte userdata partition. stdout is binary to a
+local file; remote dd diagnostics are suppressed. The reviewed UTF-8 decoder
+produces sweetlog-phasewake-*.txt/.bin/.json directly. The JSON separately
+records the exact image marker, writer phases, exec notes and sampler wake
+and start banner. A sampler banner does not prove completion of proc_iterate.
+A valid snapshot without the marker is retained as early/stale and is NOT
+attributed to this image; this classification does not require another photo.
+Offline target/product and fresh/stale/invalid-ring checks passed, with zero
+device/network calls and no private serial read during tests.
+
+Next: user enters fastboot and runs the copied boot command; inspect its
+acceptance receipt, then collect and inspect the new log directly after the
+observation window. Late persistence and the visible init_featureflags stall
+are still UNCONFIRMED. The installed rootfs is reused for this diagnostic.
+No new CI dispatch, remote write, partition flash or local device command.
+Git identity remains proshivka <kasikminecraft@mail.ru>.
+
 ### 2026-11-07 — r14: diagnostics CI passed; pinned download and boot preparation ready
 
 User-launched xnu run 42294101668, attempt 1, source
