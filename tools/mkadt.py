@@ -212,6 +212,17 @@ def build(seed=None, qemu=False, highmem=False, cas=False):
         ('reg', u64(UFS, UFS_SIZE)),
     ])
 
+    # USB resources are absolute physical addresses, pinned by the kernel's
+    # board profile before any MMIO. CAS uses SNPS femto, sweet uses QUSB2.
+    usb = node('sweet-usb', [
+        ph(),
+        ('compatible', cstr('qcom,sm8250-usb2-handoff-v1' if cas else
+                            'qcom,sm7150-usb2-handoff-v1')),
+        ('reg', u64(0x00100000, 0x90000, 0x0a600000, 0xd000,
+                    0x088e3000 if cas else 0x088e2000, 0x400,
+                    0x0a6f8800, 0x400)),
+    ])
+
     # pmap_compute_max_asids requires the node even when no overrides are set.
     # An absent pmap-max-asids property selects XNU's own MAX_ASIDS default.
     # No effaceable storage: keybagd then reads /private/var/keybags/systembag.kb
@@ -248,7 +259,8 @@ def build(seed=None, qemu=False, highmem=False, cas=False):
         ('manufacturer', cstr('Apple Inc.')),
         ('#address-cells', u32(2)),
         ('#size-cells', u32(2)),
-    ], [chosen, defaults, cpus, arm_io, fbcon, buttons, pram] + product + ([] if qemu else [ufs]))
+    ], [chosen, defaults, cpus, arm_io, fbcon, buttons, pram] + product +
+        ([] if qemu else [ufs, usb]))
 
 
 if __name__ == '__main__':

@@ -1,3 +1,84 @@
+### 2026-11-08 — r14: CAS USB ACM warm-handoff patch checked; native CI next
+
+Branch proshivka/r14-cas-usb-console-20261108 contains the opt-in0095 USB
+diagnostic and explicit /sweet-usb resources in tools/mkadt.py. Separate
+fixtures C:/ports/r14-rootmount/usb-cas-fixtures preserve accepted0094;
+its four IRQ/pstore/sampler C files are unchanged. USB C SHA256
+f345dd83216f69c4448a6ddb03fccadc68ace660d6bf3fc944e27b8794e55afc,
+patch SHA2565d45274d7b9cf088edfc5fc3e86681a6bdf011f87fb16c9f8f77b73e22857bdf.
+
+Local postmarketOS source tree /home/mcdrun/kernel-build is extracted Linux
+7.2.0; downstream /home/mcdrun/4.19cas/kernel is at
+2403e4dcd2a27f280437bee3bd48ff4984773d95. Nineteen exact reference files
+and hashes are saved outside git. Confirmed CAS SM8250 offsets: masterf010,
+sleepf018, mock-UTMIf01c, cfg-NoCf07c, aggregatef080, XO8c010. GDSCf004,
+DWC3a600000 and wrappera6f8800 are shared with sweet. SNPS PHY is88e3000;
+88e2000 is CAS EUD. No CAS clock at6a004 is assumed or accessed. The initial
+warm handoff skips PHY/PMIC MMIO entirely, retaining ABL's supplies/tuning.
+
+Mode1 remains read-only; mode2 plus sweetusbserial=1 configures CDC ACM.
+The kernel validates exact ADT identity/resources before MMIO and requires
+GDSC/master/config clocks before reading DWC3. Gadget paths require the
+remaining wrapper/XO clocks, select UTMI-as-PIPE on CAS, force peripheral
+mode/no USB2 suspend, and leave SS power override untouched. DWC3/DWC31
+families are accepted with a conservative CAS50ms reset synchronization.
+
+DMA TRBs/control buffers own separate64-byte cache lines and the event ring
+is cleaned before DMA begins. Commands/polls are bounded and failures stop
+the controller while preserving RAM diagnostics. Non-IOC END_TRANSFER waits
+at least1ms before DMA reuse. Initial EP0 resets abort DATA only, stall and
+drain stale events before rearming. ACM handles7-byte line coding/control;
+the event thread streams short<=511-byte console packets without networking.
+This diagnostic requires high-speed USB. Reset/disconnect after configuration
+stops it and requires a fresh boot; this is not a general hotplug driver.
+
+Strict additive replay/source equality and41 actual-C host cases passed;
+the final USB TU compiled as ARM64 Mach-O using accepted0094 flags. Eight
+container cases reproduce the accepted donor and preserve its ADT/pstore
+reservation; new arguments are571 bytes. Independent source review found no
+remaining blockers at the exact final C hash. Portable host reader:
+tools/sweet-usb-console.py (pyserial3.5 installed only in fixture deps).
+Its capture requires the fresh image marker and ACM banner for attribution.
+Checks/receipts remain in the USB fixtures; CI and hardware are still pending.
+Next commit/publish as proshivka, dispatch one exact-source xnu build,
+verify native sources/artifacts, prepare and boot the marked temporary image,
+capture COM output and retain automatic TWRP RAM/UFS collection fallback.
+The selected CAS was confirmed in root TWRP with the16GiB HFS+ root intact.
+
+### 2026-11-08 — r14: post-exec capture complete; CAS USB bring-up requested
+
+The accepted0094 boot has been collected and independently reconstructed.
+Both hidden recovery/analysis watchers completed and exited. Capture stem:
+C:/ports/r14-rootmount/sweetlog-postexec-b2d6e87b171345e1b48d079888889de6.
+Pmsg has95607 bytes, SHA256
+02d9cf67a44eecd216453ac085947e4bd31ec08cc0f7653f2516c3f01a53e48e;
+UFS has4198400 bytes, SHA256
+9d73964d0c878e44e31fe08357d5f5f9a96e617ccb4142a2ba5cb8bc7f8d2d04,
+40729 console bytes, flush7 and the fresh image marker. Analysis/proofs are
+postexec-fixtures/hardware-analysis.json and latest-collection.json.
+
+All28 observed post-exec INTID27 entry/exit pairs are complete: expired
+timer entries and positively rearmed exits. Sampler exec wake and repeated
+thread snapshots work;418 PST records were retained. No panic was observed.
+Final interrupted tid206 is init_featureflag[15], runnable in its snapshot.
+Final PC0xfffffe0007b39490 resolves to the entry of memcpy/memmove in
+executable __hib_text. LR0xfffffe00074eeaac follows a __memcpy_chk call
+for the CDB copy in ufs_scsi, before doorbell submission. This sampled
+prologue does not establish a copy/UFS stall. The analyzer's old __text-only
+filter omitted this valid section; retain that limit in the old receipt. Final
+clock278140779 is about14.4865s, before writer deadline295571980 (~15.3944s).
+There are no captured expired-writer-deadline samples. The root cause remains
+unresolved; this does not establish a dead timer, stuck IRQ or UFS sync stall.
+
+Latest user says CAS is in TWRP and requests USB bring-up from local
+C:/ports/postmarketos sources. All CLI/build/CI/ADB/temporary-fastboot-boot
+operations remain explicitly authorized. Physical recovery return is manual.
+Initial comparison finds that sweet_usb.c still contains SM7150 GCC and
+QUSB2 PHY resources, while CAS DTS uses SM8250 USB1 with HS-only SNPS PHY.
+No USB patch or new CI/boot has been started yet. Next verify exact local
+Linux source provenance, clocks/resets/PHY/role resources and root recovery;
+prepare separate CAS USB fixtures while preserving accepted0094 pstore.
+
 ### 2026-11-08 — r14: post-exec IRQ/thread diagnostics checked; native build pending
 
 Latest user clarification: the previous 0093 boot was manually restarted

@@ -1,0 +1,928 @@
+--- a/bsd/dev/sweet_usb.c
++++ b/bsd/dev/sweet_usb.c
+@@ -1,14 +1,10 @@
+ /*
+- * SWEET: USB bring-up, step 1 - read-only state probe.
+- *
+- * The phone's USB is a Synopsys DWC3 (USB 2.0 only, maximum-speed
+- * high-speed) at 0x0a600000 behind Qualcomm's dwc-usb3-msm wrapper, with a
+- * QUSB2 PHY at 0x088e2000; its power domain is the USB30_PRIM GDSC and its
+- * clocks come from GCC (offsets from Linux gcc-sdmmagpie.c). ABL uses this
+- * controller for fastboot; this probe only reports what state it is left
+- * in after `fastboot boot`. It never writes a register, and it touches the
+- * DWC3 / PHY register blocks only when the GCC status registers say their
+- * power domain and clocks are on (an access to a gated block would hang).
++ * Qualcomm USB2 handoff: SM7150/sweet and SM8250/cas.
++ * Board resources must match /sweet-usb before MMIO. Mode1 only reads the
++ * clock-gated state; mode2 restarts ABL's powered peripheral controller.
++ * CAS uses SNPS femto at0x088e3000 and SM8250 GCC offsets, with the USB2
++ * UTMI-as-PIPE sequence from Linux dwc3-qcom. PHY supplies/reference clock
++ * remain as ABL initialized them; this driver does not control PMIC rails.
+  */
+ #if defined(ARM64_BOARD_CONFIG_SWEET)
+ #include <sys/param.h>
+@@ -21,6 +17,7 @@
+ #include <vm/pmap.h>
+ #include <vm/vm_kern.h>
+ #include <pexpert/pexpert.h>
++#include <pexpert/device_tree.h>
+ #include <kern/locks.h>
+ #include <sys/kpi_mbuf.h>
+ #include <sys/kpi_socket.h>
+@@ -41,29 +38,78 @@
+ void sweet_usb_probe(void);
+ static void sweet_usb_gadget_start(vm_offset_t dwc);
+ extern ppnum_t pmap_find_phys(pmap_t pmap, addr64_t va);
++extern void thread_terminate_self(void) __attribute__((noreturn));
+ 
+ #define GCC_PA                  0x00100000
+ #define GCC_SIZE                0x00090000
+ #define GCC_USB30_PRIM_GDSCR    0x0f004         /* bit 31: power on */
+ #define CBCR_CLK_OFF            (1u << 31)
+ 
+-static const struct {
+-	const char *name;
+-	uint32_t    off;
+-} usb_cbcr[] = {
+-	{ "master", 0x0f010 },
+-	{ "sleep", 0x0f014 },
+-	{ "utmi", 0x0f018 },
+-	{ "cfg-noc-axi", 0x0502c },
+-	{ "aggre-axi", 0x8201c },
+-	{ "ahb2phy", 0x6a004 },
+-	{ "clkref", 0x8c010 },
++static const char *const usb_clk_names[] = {
++	"master", "sleep", "utmi", "cfg-noc-axi", "aggre-axi", "ahb2phy", "clkref",
+ };
+ 
+-#define DWC3_PA                 0x0a600000
+-#define DWC3_SIZE               0x0000d000
+-#define QUSB2_PA                0x088e2000
+-#define QUSB2_SIZE              0x00000400
++/* reg pairs: GCC, DWC3, HS PHY, Qualcomm wrapper. No arbitrary DT MMIO. */
++struct usb_board {
++	const char *compatible;
++	uintptr_t reg[8];
++	uint32_t cbcr[7];
++	bool cas;
++};
++static const struct usb_board usb_boards[] = {
++	{ "qcom,sm7150-usb2-handoff-v1",
++	  { GCC_PA, GCC_SIZE, 0x0a600000, 0xd000, 0x088e2000, 0x400, 0x0a6f8800, 0x400 },
++	  { 0x0f010, 0x0f014, 0x0f018, 0x0502c, 0x8201c, 0x6a004, 0x8c010 }, false },
++	{ "qcom,sm8250-usb2-handoff-v1",
++	  { GCC_PA, GCC_SIZE, 0x0a600000, 0xd000, 0x088e3000, 0x400, 0x0a6f8800, 0x400 },
++	  { 0x0f010, 0x0f018, 0x0f01c, 0x0f07c, 0x0f080, 0, 0x8c010 }, true },
++};
++static const struct usb_board *usb_board;
++
++static bool
++usb_compatible_contains(const void *blob, unsigned int size, const char *wanted)
++{
++	const char *at = blob;
++	bool found = false;
++	while (size) {
++		size_t length = strnlen(at, size);
++		if (length == size) {
++			return false;
++		}
++		if (length == strlen(wanted) && !memcmp(at, wanted, length)) {
++			found = true;
++		}
++		at += length + 1;
++		size -= (unsigned int)length + 1;
++	}
++	return found;
++}
++
++static const struct usb_board *
++usb_board_select(void)
++{
++	DTEntry node, root;
++	const void *compatible, *reg, *identity;
++	unsigned int compatible_size, reg_size, identity_size;
++	if (SecureDTLookupEntry(NULL, "/sweet-usb", &node) != kSuccess ||
++	    SecureDTLookupEntry(NULL, "/", &root) != kSuccess ||
++	    SecureDTGetProperty(root, "compatible", &identity, &identity_size) != kSuccess ||
++	    SecureDTGetProperty(node, "compatible", &compatible, &compatible_size) != kSuccess ||
++	    SecureDTGetProperty(node, "reg", &reg, &reg_size) != kSuccess) {
++		return NULL;
++	}
++	for (unsigned i = 0; i < sizeof(usb_boards) / sizeof(usb_boards[0]); i++) {
++		const struct usb_board *board = &usb_boards[i];
++		if (compatible_size == strlen(board->compatible) + 1 &&
++		    !memcmp(compatible, board->compatible, compatible_size) &&
++		    reg_size == sizeof(board->reg) && !memcmp(reg, board->reg, reg_size) &&
++		    usb_compatible_contains(identity, identity_size, board->cas ? "xiaomi,cas" : "xiaomi,sweet") &&
++		    usb_compatible_contains(identity, identity_size, board->cas ? "qcom,sm8250" : "qcom,sm7150")) {
++			return board;
++		}
++	}
++	return NULL;
++}
+ 
+ static uint32_t
+ usb_rd(vm_offset_t base, uint32_t off)
+@@ -77,7 +123,7 @@
+ sweet_usb_probe(void)
+ {
+ 	int enabled = 1;
+-	uint32_t gdscr, cbcr[sizeof(usb_cbcr) / sizeof(usb_cbcr[0])];
++	uint32_t gdscr, cbcr[7];
+ 	bool clocks_on = true;
+ 
+ 	/* sweetusb=0 off, 1 (default) report state only, 2 also start the USB device */
+@@ -85,16 +131,30 @@
+ 	if (!enabled) {
+ 		return;
+ 	}
+-	vm_offset_t gcc = ml_io_map(GCC_PA, GCC_SIZE);
++	if (enabled != 1 && enabled != 2) {
++		printf("SWEET USB: invalid mode; disabled\n");
++		return;
++	}
++	usb_board = usb_board_select();
++	if (usb_board == NULL) {
++		printf("SWEET USB: no validated /sweet-usb board resources; disabled\n");
++		return;
++	}
++	printf("SWEET USB: profile %s\n", usb_board->compatible);
++	vm_offset_t gcc = ml_io_map(usb_board->reg[0], usb_board->reg[1]);
+ 	if (gcc == 0) {
+ 		printf("SWEET USB: GCC map failed\n");
+ 		return;
+ 	}
+ 	gdscr = usb_rd(gcc, GCC_USB30_PRIM_GDSCR);
+ 	printf("SWEET USB: GDSC usb30_prim 0x%08x (%s)\n", gdscr, (gdscr & (1u << 31)) ? "on" : "off");
+-	for (unsigned i = 0; i < sizeof(usb_cbcr) / sizeof(usb_cbcr[0]); i++) {
+-		cbcr[i] = usb_rd(gcc, usb_cbcr[i].off);
+-		printf("SWEET USB: clk %-12s CBCR 0x%08x (%s)\n", usb_cbcr[i].name, cbcr[i],
++	for (unsigned i = 0; i < 7; i++) {
++		if (!usb_board->cbcr[i]) {
++			cbcr[i] = CBCR_CLK_OFF;
++			continue;
++		}
++		cbcr[i] = usb_rd(gcc, usb_board->cbcr[i]);
++		printf("SWEET USB: clk %-12s CBCR 0x%08x (%s)\n", usb_clk_names[i], cbcr[i],
+ 		    (cbcr[i] & CBCR_CLK_OFF) ? "off" : "on");
+ 	}
+ 	/* DWC3 registers need the GDSC, the master clock and the config-NoC path. */
+@@ -103,35 +163,44 @@
+ 		printf("SWEET USB: controller unpowered or unclocked; DWC3 not read\n");
+ 		return;
+ 	}
+-	vm_offset_t dwc = ml_io_map(DWC3_PA, DWC3_SIZE);
++	vm_offset_t dwc = ml_io_map(usb_board->reg[2], usb_board->reg[3]);
+ 	if (dwc == 0) {
+ 		printf("SWEET USB: DWC3 map failed\n");
+ 		return;
+ 	}
++	uint32_t id = usb_rd(dwc, 0xc120);
++	if ((id & 0xffff0000u) != 0x55330000u && (id & 0xffff0000u) != 0x33310000u) {
++		printf("SWEET USB: unexpected DWC3 ID 0x%08x; disabled\n", id);
++		return;
++	}
+ 	printf("SWEET USB: DWC3 GSNPSID 0x%08x GCTL 0x%08x GSTS 0x%08x GUSB2PHYCFG 0x%08x\n",
+-	    usb_rd(dwc, 0xc120), usb_rd(dwc, 0xc110), usb_rd(dwc, 0xc118), usb_rd(dwc, 0xc200));
++	    id, usb_rd(dwc, 0xc110), usb_rd(dwc, 0xc118), usb_rd(dwc, 0xc200));
+ 	printf("SWEET USB: DWC3 DCFG 0x%08x DCTL 0x%08x DEVTEN 0x%08x DSTS 0x%08x DALEPENA 0x%08x\n",
+ 	    usb_rd(dwc, 0xc700), usb_rd(dwc, 0xc704), usb_rd(dwc, 0xc708), usb_rd(dwc, 0xc70c),
+ 	    usb_rd(dwc, 0xc720));
+ 	printf("SWEET USB: DWC3 GEVNTADR 0x%08x%08x GEVNTSIZ 0x%08x GEVNTCOUNT 0x%08x GHWPARAMS0 0x%08x\n",
+ 	    usb_rd(dwc, 0xc404), usb_rd(dwc, 0xc400), usb_rd(dwc, 0xc408), usb_rd(dwc, 0xc40c),
+ 	    usb_rd(dwc, 0xc140));
+-	if (enabled >= 2) {
++	if (usb_board->cas) {
++		/* GCC state alone cannot verify the inherited PHY rails/APB access. */
++		printf("SWEET USB: CAS SNPS femto at0x088e3000 retained from ABL; PHY not accessed\n");
++	} else if (!(cbcr[5] & CBCR_CLK_OFF) && !(cbcr[6] & CBCR_CLK_OFF)) {
++		vm_offset_t phy = ml_io_map(usb_board->reg[4], usb_board->reg[5]);
++		if (phy != 0) {
++			printf("SWEET USB: QUSB2 PLL_STATUS 0x%08x PWR_CTRL1 0x%08x PORT_TUNE1 0x%08x TEST1 0x%08x\n",
++			    usb_rd(phy, 0x1a0), usb_rd(phy, 0x210), usb_rd(phy, 0x240), usb_rd(phy, 0x254));
++		}
++	} else {
++		printf("SWEET USB: PHY access clocks off; PHY not read\n");
++	}
++	if (enabled == 2) {
++		/* Gadget DMA and the USB2 datapath need all five wrapper clocks and XO. */
++		if ((cbcr[1] | cbcr[2] | cbcr[4] | cbcr[6]) & CBCR_CLK_OFF) {
++			printf("SWEET USB: gadget clocks off; retaining ABL state\n");
++			return;
++		}
+ 		sweet_usb_gadget_start(dwc);
+ 	}
+-	if (cbcr[5] & CBCR_CLK_OFF) {
+-		printf("SWEET USB: ahb2phy clock off; QUSB2 PHY not read\n");
+-		return;
+-	}
+-	vm_offset_t phy = ml_io_map(QUSB2_PA, QUSB2_SIZE);
+-	if (phy == 0) {
+-		return;
+-	}
+-	/* DT qcom,qusb-phy-reg-offset order (Linux phy-msm-qusb-v2.c): PORT_TUNE1 0x240,
+-	 * PLL_COMMON_STATUS_ONE 0x1a0, PWR_CTRL1 0x210, INTR_CTRL 0x230,
+-	 * PLL_CORE_INPUT_OVERRIDE 0x0a8, TEST1 0x254. */
+-	printf("SWEET USB: QUSB2 PLL_STATUS 0x%08x PWR_CTRL1 0x%08x PORT_TUNE1 0x%08x TEST1 0x%08x\n",
+-	    usb_rd(phy, 0x1a0), usb_rd(phy, 0x210), usb_rd(phy, 0x240), usb_rd(phy, 0x254));
+ }
+ 
+ /*
+@@ -167,7 +236,10 @@
+  * session; Linux dwc3-qcom forces that in software when the charger
+  * reports a cable (dwc3_qcom_vbus_override_enable).
+  */
+-#define QSCRATCH_PA             0x0a6f8800
++#define QSCRATCH_GENERAL_CFG    0x08
++#define   PIPE_UTMI_CLK_SEL     (1u << 0)
++#define   PIPE3_PHYSTATUS_SW    (1u << 3)
++#define   PIPE_UTMI_CLK_DIS     (1u << 8)
+ #define QSCRATCH_HS_PHY_CTRL    0x10
+ #define   UTMI_OTG_VBUS_VALID   (1u << 20)
+ #define   SW_SESSVLD_SEL        (1u << 28)
+@@ -181,9 +253,13 @@
+ #define DEPCMD_SETEPCONFIG      1
+ #define DEPCMD_SETTRANSFRESOURCE 2
+ #define DEPCMD_SETSTALL         4
++#define DEPCMD_CLEARSTALL       5
+ #define DEPCMD_STARTTRANSFER    6
++#define DEPCMD_ENDTRANSFER      8
+ #define DEPCMD_DEPSTARTCFG      9
+ #define DEPCMD_CMDACT           (1u << 10)
++#define DEPCMD_HIPRI_FORCERM    (1u << 11)
++#define DEPCMD_CMDIOC           (1u << 8)
+ 
+ #define TRB_HWO         (1u << 0)
+ #define TRB_LST         (1u << 1)
+@@ -198,13 +274,14 @@
+ #define UD_EVT          0x0000          /* event buffer, 4 KiB */
+ #define UD_EVT_SIZE     0x1000
+ #define UD_TRB_OUT      0x1000          /* ep0 OUT TRB */
+-#define UD_TRB_IN       0x1010          /* ep0 IN TRB */
+-#define UD_TRB_RX       0x1020          /* ep1 OUT (bulk, host -> phone) */
+-#define UD_TRB_TX       0x1030          /* ep1 IN (bulk, phone -> host) */
+-#define UD_TRB_INT      0x1050          /* ep2 IN (interrupt, notifications) */
+-#define UD_SETUP        0x1040          /* 8-byte setup packet */
+-#define UD_DATA         0x1100          /* ep0 data stage, 512 bytes */
+-#define UD_NOTIFY       0x1300          /* 16-byte notification */
++#define UD_TRB_IN       0x1040          /* ep0 IN TRB */
++#define UD_TRB_RX       0x1080          /* ep1 OUT (bulk, host -> phone) */
++#define UD_TRB_TX       0x10c0          /* ep1 IN (bulk, phone -> host) */
++#define UD_TRB_INT      0x1100          /* ep2 IN (interrupt, notifications) */
++#define UD_SETUP        0x1140          /* 8-byte setup packet */
++#define UD_DATA         0x1200          /* ep0 data stage, 512 bytes */
++#define UD_NOTIFY       0x1400          /* 16-byte notification */
++/* Each bidirectional DMA object owns a cache line: no shared TRB writeback. */
+ #define UD_RX           0x2000          /* one received frame */
+ #define UD_TX           0x2800          /* one frame to send */
+ #define UD_FRAME_MAX    0x800
+@@ -224,11 +301,18 @@
+ 	uint64_t    dma_pa;
+ 	uint32_t    evt_pos;
+ 	int         sleep_chan;
+-	enum { EP0_SETUP, EP0_DATA, EP0_WAIT_STATUS2, EP0_WAIT_STATUS3, EP0_STATUS } state;
++	enum { EP0_SETUP, EP0_DATA, EP0_LINE_CODING, EP0_WAIT_STATUS2, EP0_WAIT_STATUS3, EP0_STATUS } state;
+ 	bool        data_in;        /* data stage direction */
+ 	uint32_t    events;
+ 	bool        configured;
+ 	uint8_t     data_alt;       /* data interface alternate setting */
++	bool        serial;         /* opt-in CDC ACM console, no network stack */
++	bool        serial_fault;
++	bool        fault, ep0_restart;
++	uint8_t     transfer_index[6];
++	bool        transfer_active[6];
++	uint64_t    serial_pos, serial_pending_pos;
++	uint8_t     line_coding[7];
+ 	/* network */
+ 	ifnet_t     ifp;
+ 	lck_mtx_t  *lock;           /* TX ring and TX endpoint */
+@@ -252,6 +336,19 @@
+ }
+ 
+ static void
++ud_fail(const char *reason)
++{
++	if (ud.fault) {
++		return;
++	}
++	ud.fault = true;
++	ud.configured = false;
++	dwc_wr(DEVTEN, 0);
++	dwc_wr(DCTL, dwc_rd(DCTL) & ~DCTL_RUN_STOP);
++	printf("SWEET USB: %s; controller stopped, console retained in RAM\n", reason);
++}
++
++static void
+ ud_sync(uint32_t off, uint32_t len)
+ {
+ 	flush_dcache64((addr64_t)(ud.dma_pa + off), len, TRUE);
+@@ -269,6 +366,9 @@
+ static int
+ ud_epcmd(unsigned ep, uint32_t cmd, uint32_t p0, uint32_t p1, uint32_t p2)
+ {
++	if (ud.fault) {
++		return -1;
++	}
+ 	dwc_wr(DEPCMDPAR0(ep), p0);
+ 	dwc_wr(DEPCMDPAR1(ep), p1);
+ 	dwc_wr(DEPCMDPAR2(ep), p2);
+@@ -290,9 +390,53 @@
+ }
+ 
+ /* One TRB (at DMA offset trb) on physical endpoint ep. */
+-static void
++static int
++ud_stop_transfer(unsigned ep)
++{
++	if (!ud.transfer_active[ep]) {
++		return 0;
++	}
++	uint32_t cmd = DEPCMD_ENDTRANSFER | DEPCMD_HIPRI_FORCERM |
++	    ((uint32_t)ud.transfer_index[ep] << 16);
++	if (ud_epcmd(ep, cmd, 0, 0, 0) != 0) {
++		ud_fail("END_TRANSFER command failed");
++		return -1;
++	}
++	/* Non-IOC END_TRANSFER: Linux requires>=1ms before reusing DMA storage. */
++	delay(1000);
++	ud.transfer_active[ep] = false;
++	ud.transfer_index[ep] = 0;
++	return 0;
++}
++
++/* SETUP/STATUS are reset by EP0 stall; END_TRANSFER applies only to DATA. */
++static int
++ud_stop_control_data(void)
++{
++	if (ud.state != EP0_DATA && ud.state != EP0_LINE_CODING) {
++		return 0;
++	}
++	return ud_stop_transfer(0) || ud_stop_transfer(1) ? -1 : 0;
++}
++
++static bool
++ud_deconfigure(void)
++{
++	if (ud_stop_transfer(EP_RX) || ud_stop_transfer(EP_TX) || ud_stop_transfer(EP_INT)) {
++		return false;
++	}
++	ud.configured = false;
++	ud.tx_busy = false;
++	dwc_wr(DALEPENA, 0x3);
++	return true;
++}
++
++static int
+ ud_start_trb(unsigned ep, uint32_t trb, uint32_t buf, uint32_t len, uint32_t ctl)
+ {
++	if (ud.fault) {
++		return -1;
++	}
+ 	volatile uint32_t *t = (volatile uint32_t *)(ud.dma + trb);
+ 	uint64_t bpa = ud.dma_pa + buf;
+ 
+@@ -305,7 +449,14 @@
+ 		ud_sync(buf, len);
+ 	}
+ 	uint64_t tpa = ud.dma_pa + trb;
+-	ud_epcmd(ep, DEPCMD_STARTTRANSFER, (uint32_t)(tpa >> 32), (uint32_t)tpa, 0);
++	int result = ud_epcmd(ep, DEPCMD_STARTTRANSFER, (uint32_t)(tpa >> 32), (uint32_t)tpa, 0);
++	if (result != 0) {
++		ud_fail("START_TRANSFER command failed");
++		return result;
++	}
++	ud.transfer_index[ep] = (uint8_t)((dwc_rd(DEPCMD(ep)) >> 16) & 0x7f);
++	ud.transfer_active[ep] = true;
++	return 0;
+ }
+ 
+ static void
+@@ -317,6 +468,7 @@
+ static void
+ ud_start_setup(void)
+ {
++	ud.ep0_restart = false;
+ 	ud.state = EP0_SETUP;
+ 	ud_start(0, UD_SETUP, 8, TRBCTL_SETUP);
+ }
+@@ -324,7 +476,15 @@
+ static void
+ ud_stall(void)
+ {
+-	ud_epcmd(0, DEPCMD_SETSTALL, 0, 0, 0);
++	if (ud_stop_control_data()) {
++		return;
++	}
++	ud.transfer_active[0] = ud.transfer_active[1] = false;
++	ud.transfer_index[0] = ud.transfer_index[1] = 0;
++	if (ud_epcmd(0, DEPCMD_SETSTALL, 0, 0, 0) != 0) {
++		ud_fail("EP0 stall command failed");
++		return;
++	}
+ 	ud_start_setup();
+ }
+ 
+@@ -336,6 +496,10 @@
+ static const uint8_t ud_dev_desc[18] = {
+ 	18, 1, 0x00, 0x02, 0x02, 0x00, 0x00, 64,
+ 	0x09, 0x12, 0x01, 0x00, 0x00, 0x01, 1, 2, 3, 1,
++};
++static const uint8_t ud_acm_dev_desc[18] = {
++	18, 1, 0x00, 0x02, 0x02, 0x02, 0x01, 64,
++	0x09, 0x12, 0x01, 0x00, 0x01, 0x01, 1, 2, 3, 1,
+ };
+ static const uint8_t ud_cfg_desc[80] = {
+ 	9, 2, 80, 0, 2, 1, 0, 0x80, 250,                /* config: 2 interfaces, 500 mA */
+@@ -349,6 +513,22 @@
+ 	7, 5, 0x81, 0x02, 0x00, 0x02, 0,                /* ep 0x81 bulk IN, 512 */
+ 	7, 5, 0x01, 0x02, 0x00, 0x02, 0,                /* ep 0x01 bulk OUT, 512 */
+ };
++/* Windows usbser, Linux cdc_acm and macOS recognize this console function. */
++static const uint8_t ud_acm_desc[67] = {
++	9, 2, 67, 0, 2, 1, 0, 0x80, 250,
++	9, 4, 0, 0, 1, 0x02, 0x02, 0x01, 0,
++	5, 0x24, 0x00, 0x10, 0x01,                       /* CDC header */
++	4, 0x24, 0x02, 0x02,                             /* ACM: line coding/control */
++	5, 0x24, 0x06, 0, 1,                             /* union */
++	5, 0x24, 0x01, 0, 1,                             /* call management */
++	7, 5, 0x82, 0x03, 16, 0, 9,
++	9, 4, 1, 0, 2, 0x0a, 0x00, 0x00, 0,
++	7, 5, 0x81, 0x02, 0x00, 0x02, 0,
++	7, 5, 0x01, 0x02, 0x00, 0x02, 0,
++};
++static const char *const ud_acm_strings[] = {
++	NULL, "ios-cas", "CAS XNU console", "0001",
++};
+ /* The host side's MAC (ECM iMACAddress); the phone's own is ..:02 */
+ static const char *const ud_strings[] = {
+ 	NULL, "ios-sweet", "Sweet iOS (USB Ethernet)", "0001", "02005E77EE01",
+@@ -362,10 +542,12 @@
+ 		out[0] = 4; out[1] = 3; out[2] = 0x09; out[3] = 0x04;   /* en-US */
+ 		return 4;
+ 	}
+-	if (idx >= sizeof(ud_strings) / sizeof(ud_strings[0])) {
++	unsigned count = ud.serial ? sizeof(ud_acm_strings) / sizeof(ud_acm_strings[0]) :
++	    sizeof(ud_strings) / sizeof(ud_strings[0]);
++	if (idx >= count) {
+ 		return 0;
+ 	}
+-	const char *str = ud_strings[idx];
++	const char *str = ud.serial ? ud_acm_strings[idx] : ud_strings[idx];
+ 	uint32_t n = 2;
+ 	for (; *str && n < 126; str++) {
+ 		out[n++] = (uint8_t)*str;
+@@ -393,11 +575,11 @@
+ }
+ 
+ /* SET_CONFIGURATION(1): bulk IN/OUT and the interrupt endpoint. */
+-static void
++static bool
+ ud_configure(void)
+ {
+ 	if (ud.configured) {
+-		return;
++		return true;
+ 	}
+ 	if (ud_epcmd(0, DEPCMD_DEPSTARTCFG | (2u << 16), 0, 0, 0) ||
+ 	    ud_epcmd(EP_RX, DEPCMD_SETEPCONFIG, (2u << 1) | (512u << 3), (1u << 8) | ((uint32_t)EP_RX << 25), 0) ||
+@@ -408,12 +590,17 @@
+ 	    (1u << 8) | (8u << 16) | ((uint32_t)EP_INT << 25), 0) ||
+ 	    ud_epcmd(EP_INT, DEPCMD_SETTRANSFRESOURCE, 1, 0, 0)) {
+ 		printf("SWEET USB: data endpoints setup failed\n");
+-		return;
++		ud_fail("data endpoint configuration failed");
++		return false;
+ 	}
+ 	dwc_wr(DALEPENA, dwc_rd(DALEPENA) | (1u << EP_RX) | (1u << EP_TX) | (1u << EP_INT));
+ 	ud.configured = true;
+ 	ud_rx_arm();
+-	printf("SWEET USB: ECM endpoints configured\n");
++	if (ud.fault) {
++		return false;
++	}
++	printf("SWEET USB: %s endpoints configured\n", ud.serial ? "ACM" : "ECM");
++	return true;
+ }
+ 
+ static void
+@@ -427,17 +614,35 @@
+ 	uint16_t length = (uint16_t)(st[6] | st[7] << 8);
+ 	uint32_t n = 0;
+ 	bool ok = true;
++	bool line_coding = false;
+ 
+ 	printf("SWEET USB: setup %02x %02x %04x %04x len %u\n", type, req, value, index, length);
+ 	ud.data_in = (type & 0x80) != 0;
+ 	if ((type & 0x60) == 0x20) {    /* class request (e.g. SET_ETHERNET_PACKET_FILTER) */
+-		ok = (length == 0);
++		if (!ud.serial) {
++			ok = (length == 0);
++		} else if (type == 0xa1 && req == 0x21 && index == 0 && length == 7) {
++			memcpy(data, ud.line_coding, 7); n = 7; /* GET_LINE_CODING */
++		} else if (type == 0x21 && req == 0x20 && index == 0 && length == 7) {
++			line_coding = true;                   /* SET_LINE_CODING */
++		} else {
++			ok = type == 0x21 && index == 0 && length == 0 &&
++			    (req == 0x22 || req == 0x23);      /* CONTROL_LINE_STATE / BREAK */
++		}
+ 	} else if ((type & 0x60) != 0) {
+ 		ok = false;
+ 	} else if (req == 6) {          /* GET_DESCRIPTOR */
+ 		switch (value >> 8) {
+-		case 1: memcpy(data, ud_dev_desc, sizeof(ud_dev_desc)); n = sizeof(ud_dev_desc); break;
+-		case 2: memcpy(data, ud_cfg_desc, sizeof(ud_cfg_desc)); n = sizeof(ud_cfg_desc); break;
++		case 1:
++			memcpy(data, ud.serial ? ud_acm_dev_desc : ud_dev_desc, sizeof(ud_dev_desc));
++			n = sizeof(ud_dev_desc); break;
++		case 2:
++			if (ud.serial) {
++				memcpy(data, ud_acm_desc, sizeof(ud_acm_desc)); n = sizeof(ud_acm_desc);
++			} else {
++				memcpy(data, ud_cfg_desc, sizeof(ud_cfg_desc)); n = sizeof(ud_cfg_desc);
++			}
++			break;
+ 		case 3: n = ud_string(value & 0xff, data); ok = n != 0; break;
+ 		default: ok = false; break;
+ 		}
+@@ -447,7 +652,11 @@
+ 		printf("SWEET USB: address %u\n", value & 0x7f);
+ 	} else if (req == 9) {          /* SET_CONFIGURATION */
+ 		if (value == 1) {
+-			ud_configure();
++			ok = ud_configure();
++		} else if (value == 0 && ud.serial) {
++			ok = ud_deconfigure();
++		} else {
++			ok = false;
+ 		}
+ 		printf("SWEET USB: configured (%u)\n", value);
+ 	} else if (req == 8) {          /* GET_CONFIGURATION */
+@@ -455,7 +664,9 @@
+ 	} else if (req == 0) {          /* GET_STATUS */
+ 		data[0] = 0; data[1] = 0; n = 2;
+ 	} else if (req == 11) {         /* SET_INTERFACE */
+-		if (index == 1) {
++		if (ud.serial) {
++			ok = index < 2 && value == 0;
++		} else if (index == 1) {
+ 			ud.data_alt = (uint8_t)value;
+ 			if (value == 1 && ud.configured) {
+ 				ud_notify_connected();
+@@ -476,7 +687,7 @@
+ 		ud.state = EP0_WAIT_STATUS2;    /* status stage on XferNotReady */
+ 		return;
+ 	}
+-	ud.state = EP0_DATA;
++	ud.state = line_coding ? EP0_LINE_CODING : EP0_DATA;
+ 	if (ud.data_in) {
+ 		if (n > length) {
+ 			n = length;
+@@ -710,17 +921,56 @@
+ 	if (ev & 1) {                   /* device event */
+ 		uint32_t type = (ev >> 8) & 0xf;
+ 		if (type == 1) {        /* USB reset */
++			if (ud.serial && ud.configured) {
++				/* This diagnostic does not attempt a live gadget restart. */
++				ud_fail("ACM reset after configuration; reboot required");
++				return;
++			}
++			if (ud.serial && (ud.state != EP0_SETUP || !ud.transfer_active[0])) {
++				if (ud_stop_control_data()) {
++					return;
++				}
++				if (ud_epcmd(0, DEPCMD_SETSTALL, 0, 0, 0) != 0) {
++					ud_fail("reset EP0 stall failed");
++					return;
++				}
++				ud.transfer_active[0] = ud.transfer_active[1] = false;
++				ud.transfer_index[0] = ud.transfer_index[1] = 0;
++				ud.state = EP0_SETUP;
++				/* Drain the batch's stale EP0 events before reusing its TRBs. */
++				ud.ep0_restart = true;
++			}
+ 			dwc_wr(DCFG, dwc_rd(DCFG) & ~(0x7fu << 3));
++			if (ud.serial) {
++				ud.configured = false;
++				ud.tx_busy = false;
++				ud.serial_fault = false;
++			}
+ 			printf("SWEET USB: bus reset\n");
+ 		} else if (type == 2) { /* connect done */
+ 			uint32_t speed = dwc_rd(DSTS) & 7;
++			if (ud.serial && speed != 0) {
++				ud_fail("ACM requires high-speed USB in this diagnostic");
++				return;
++			}
+ 			/* ep0 max packet: 64 at high/full speed (modify action) */
+-			ud_epcmd(0, DEPCMD_SETEPCONFIG, (0u << 1) | (64u << 3) | (2u << 30),
+-			    (1u << 8) | (1u << 10) | (0u << 25), 0);
+-			ud_epcmd(1, DEPCMD_SETEPCONFIG, (0u << 1) | (64u << 3) | (2u << 30),
+-			    (1u << 8) | (1u << 10) | (1u << 25), 0);
++			if (ud_epcmd(0, DEPCMD_SETEPCONFIG, (0u << 1) | (64u << 3) | (2u << 30),
++			    (1u << 8) | (1u << 10) | (0u << 25), 0) ||
++			    ud_epcmd(1, DEPCMD_SETEPCONFIG, (0u << 1) | (64u << 3) | (2u << 30),
++			    (1u << 8) | (1u << 10) | (1u << 25), 0)) {
++				ud_fail("connect endpoint configuration failed");
++				return;
++			}
+ 			printf("SWEET USB: connected, speed %u\n", speed);
+ 		} else if (type == 0) {
++			if (ud.serial && ud.configured) {
++				ud_fail("ACM disconnect after configuration; reboot required");
++				return;
++			}
++			if (ud.serial) {
++				ud.configured = false;
++				ud.tx_busy = false;
++			}
+ 			printf("SWEET USB: disconnect\n");
+ 		}
+ 		return;
+@@ -728,12 +978,41 @@
+ 	unsigned ep = (ev >> 1) & 0x1f;
+ 	unsigned type = (ev >> 6) & 0xf;
+ 	unsigned status = (ev >> 12) & 0xf;
++	if (ud.serial && type == 1 && (status & 1)) {
++		ud_fail("ACM DMA bus error");
++		return;
++	}
++	if (ud.serial && ep <= 1 && ud.ep0_restart) {
++		return;
++	}
++	if (type == 1 && ep < 6) {
++		if (ud.serial && !ud.transfer_active[ep]) {
++			return;
++		}
++		ud.transfer_active[ep] = false;
++		ud.transfer_index[ep] = 0;
++	}
+ 
+ 	if (ep == EP_RX && type == 1) {
+-		ud_rx_done();
++		if (ud.configured) {
++			ud_rx_done();
++		}
+ 		return;
+ 	}
+ 	if (ep == EP_TX && type == 1) {
++		if (ud.serial) {
++			ud_sync(UD_TRB_TX, 16);
++			volatile uint32_t *trb = (volatile uint32_t *)(ud.dma + UD_TRB_TX);
++			if ((trb[2] & 0xffffff) != 0 || (trb[2] >> 28) != 0) {
++				ud.serial_fault = true;
++				printf("SWEET USB: ACM TX incomplete; console retained in RAM\n");
++			} else {
++				ud.serial_pos = ud.serial_pending_pos;
++				ud.tx_frames++;
++			}
++			ud.tx_busy = false;
++			return;
++		}
+ 		lck_mtx_lock(ud.lock);
+ 		ud.tx_busy = false;
+ 		ud_tx_kick_locked();
+@@ -758,6 +1037,18 @@
+ 		case EP0_DATA:
+ 			ud.state = EP0_WAIT_STATUS3;
+ 			break;
++		case EP0_LINE_CODING: {
++			ud_sync(UD_TRB_OUT, 16);
++			volatile uint32_t *trb = (volatile uint32_t *)(ud.dma + UD_TRB_OUT);
++			if ((trb[2] & 0xffffff) != 64 - 7 || (trb[2] >> 28) != 0) {
++				ud_stall();
++				break;
++			}
++			ud_sync(UD_DATA, 64);
++			memcpy(ud.line_coding, (const void *)(ud.dma + UD_DATA), 7);
++			ud.state = EP0_WAIT_STATUS3;
++			break;
++		}
+ 		case EP0_STATUS:
+ 			ud_start_setup();
+ 			break;
+@@ -775,12 +1066,46 @@
+ 	}
+ }
+ 
++extern uint32_t sweet_log_copy(uint64_t *pos, char *out, uint32_t max);
++extern uint64_t sweet_log_position(void);
++
++/* Only the USB event thread owns serial TX. Each packet is short at HS. */
++static void
++ud_serial_tx(void)
++{
++	if (!ud.serial || !ud.configured || ud.tx_busy || ud.serial_fault) {
++		return;
++	}
++	uint64_t next = ud.serial_pos;
++	uint32_t len = sweet_log_copy(&next, (char *)(ud.dma + UD_TX), 511);
++	if (!len) {
++		return;
++	}
++	ud.serial_pending_pos = next;
++	ud.tx_busy = true;
++	if (ud_start_trb(EP_TX, UD_TRB_TX, UD_TX, len, TRBCTL_NORMAL) != 0) {
++		ud.tx_busy = false;
++		ud.serial_fault = true;
++		printf("SWEET USB: ACM TX command failed; console retained in RAM\n");
++	}
++}
++
+ static void
+ ud_thread(void *arg __unused, wait_result_t wr __unused)
+ {
+ 	uint32_t ticks = 0;
+ 	for (;;) {
++		if (ud.fault) {
++			thread_terminate_self();
++			return;
++		}
+ 		uint32_t count = dwc_rd(GEVNTCOUNT) & 0xffff;
++		if (count > UD_EVT_SIZE || (count & 3)) {
++			printf("SWEET USB: invalid event count %u; controller stopped\n", count);
++			dwc_wr(DCTL, dwc_rd(DCTL) & ~DCTL_RUN_STOP);
++			thread_terminate_self();
++			return;
++		}
+ 		if (count) {
+ 			ud_sync(UD_EVT, UD_EVT_SIZE);
+ 			for (uint32_t done = 0; done < count; done += 4) {
+@@ -790,9 +1115,17 @@
+ 					printf("SWEET USB: event 0x%08x\n", ev);
+ 				}
+ 				ud_event(ev);
++				if (ud.fault) {
++					thread_terminate_self();
++					return;
++				}
+ 			}
+ 			dwc_wr(GEVNTCOUNT, count);
+ 		}
++		if (ud.ep0_restart && !(dwc_rd(GEVNTCOUNT) & 0xffff)) {
++			ud_start_setup();
++		}
++		ud_serial_tx();
+ 		if ((++ticks % 30000) == 0) {
+ 			printf("SWEET USB: ue0 rx %llu tx %llu frames\n", ud.rx_frames, ud.tx_frames);
+ 		}
+@@ -807,9 +1140,6 @@
+  * so the boot is included. Nothing here may print (it would feed itself).
+  * Boot-arg sweetusblog=0 disables it.
+  */
+-extern uint32_t sweet_log_copy(uint64_t *pos, char *out, uint32_t max);
+-extern uint64_t sweet_log_position(void);
+-
+ static void
+ ud_log_thread(void *arg __unused, wait_result_t wr __unused)
+ {
+@@ -849,9 +1179,55 @@
+ }
+ 
+ static void
++usb_write(vm_offset_t base, uint32_t offset, uint32_t value)
++{
++	*(volatile uint32_t *)(base + offset) = value;
++	__asm__ volatile ("dsb sy" ::: "memory");
++	(void)usb_rd(base, offset);
++}
++
++/* Linux dwc3-qcom USB2-only muxing; no SS PHY or PMIC register access. */
++static bool
++ud_prepare_wrapper(vm_offset_t qs)
++{
++	if (usb_board->cas) {
++		usb_write(qs, QSCRATCH_GENERAL_CFG, usb_rd(qs, QSCRATCH_GENERAL_CFG) | PIPE_UTMI_CLK_DIS);
++		delay(100);
++		usb_write(qs, QSCRATCH_GENERAL_CFG, usb_rd(qs, QSCRATCH_GENERAL_CFG) |
++		    PIPE_UTMI_CLK_SEL | PIPE3_PHYSTATUS_SW);
++		delay(100);
++		usb_write(qs, QSCRATCH_GENERAL_CFG, usb_rd(qs, QSCRATCH_GENERAL_CFG) & ~PIPE_UTMI_CLK_DIS);
++		uint32_t general = usb_rd(qs, QSCRATCH_GENERAL_CFG);
++		if ((general & (PIPE_UTMI_CLK_DIS | PIPE_UTMI_CLK_SEL | PIPE3_PHYSTATUS_SW)) !=
++		    (PIPE_UTMI_CLK_SEL | PIPE3_PHYSTATUS_SW)) {
++			printf("SWEET USB: CAS UTMI clock selection failed 0x%08x\n", general);
++			return false;
++		}
++		/* Explicit peripheral mode and the CAS DTS's USB2 no-suspend quirks. */
++		dwc_wr(GCTL, (dwc_rd(GCTL) & ~(3u << 12)) | (2u << 12) | 1u);
++		dwc_wr(0xc200, dwc_rd(0xc200) & ~((1u << 6) | (1u << 8)));
++	}
++	if (!usb_board->cas) {
++		usb_write(qs, QSCRATCH_SS_PHY_CTRL, usb_rd(qs, QSCRATCH_SS_PHY_CTRL) | LANE0_PWR_PRESENT);
++	}
++	usb_write(qs, QSCRATCH_HS_PHY_CTRL, usb_rd(qs, QSCRATCH_HS_PHY_CTRL) |
++	    UTMI_OTG_VBUS_VALID | SW_SESSVLD_SEL);
++	printf("SWEET USB: wrapper GENERAL 0x%08x HS 0x%08x SS 0x%08x\n",
++	    usb_rd(qs, QSCRATCH_GENERAL_CFG), usb_rd(qs, QSCRATCH_HS_PHY_CTRL), usb_rd(qs, QSCRATCH_SS_PHY_CTRL));
++	return true;
++}
++
++static void
+ sweet_usb_gadget_start(vm_offset_t dwc)
+ {
+ 	thread_t thread;
++	int serial = 0;
++	PE_parse_boot_argn("sweetusbserial", &serial, sizeof(serial));
++	if (serial != 0 && serial != 1) {
++		printf("SWEET USB: invalid serial profile; disabled\n");
++		return;
++	}
++	ud.serial = serial == 1;
+ 
+ 	ud.dwc = dwc;
+ 	if (kmem_alloc_contig(kernel_map, &ud.dma, UD_SIZE, PAGE_MASK, 0, 0,
+@@ -864,7 +1240,19 @@
+ 		return;
+ 	}
+ 	ud.dma_pa = ptoa_64(pn);
+-	ud_if_create();
++	if (ud.serial) {
++		static const uint8_t coding[7] = { 0x00, 0xc2, 0x01, 0, 0, 0, 8 }; /*115200,8N1*/
++		memcpy(ud.line_coding, coding, sizeof(coding));
++		uint64_t pos = sweet_log_position();
++		ud.serial_pos = pos > 65536 ? pos - 65536 : 0;
++	} else {
++		ud_if_create();
++	}
++	vm_offset_t qs = ml_io_map(usb_board->reg[6], usb_board->reg[7]);
++	if (qs == 0 || !ud_prepare_wrapper(qs)) {
++		printf("SWEET USB: wrapper not ready; device controller retained\n");
++		return;
++	}
+ 
+ 	/* Device controller soft reset (PHY and global setup stay as ABL left them). */
+ 	dwc_wr(DCTL, DCTL_CSFTRST);
+@@ -877,7 +1265,13 @@
+ 	if (dwc_rd(DCTL) & DCTL_CSFTRST) {
+ 		return;
+ 	}
+-
++	/* DWC31 <=1.80a requires reset synchronization;50ms covers the CAS family. */
++	if (usb_board->cas) {
++		delay(50000);
++	}
++
++	/* KMA_ZERO may leave dirty CPU lines: clean before any device DMA writes. */
++	ud_sync(UD_EVT, UD_EVT_SIZE);
+ 	dwc_wr(GEVNTADRLO, (uint32_t)(ud.dma_pa + UD_EVT));
+ 	dwc_wr(GEVNTADRHI, (uint32_t)((ud.dma_pa + UD_EVT) >> 32));
+ 	dwc_wr(GEVNTSIZ, (1u << 31) | UD_EVT_SIZE);     /* interrupt masked: polled */
+@@ -890,28 +1284,19 @@
+ 	/* Events: disconnect, USB reset, connect done */
+ 	dwc_wr(DEVTEN, 0x7);
+ 
+-	/* Endpoint 0 OUT/IN: start config, control type, max packet 512 until connect done. */
++	/* DCFG is USB2 high-speed; endpoint0 uses64-byte packets from the start. */
+ 	if (ud_epcmd(0, DEPCMD_DEPSTARTCFG, 0, 0, 0) ||
+-	    ud_epcmd(0, DEPCMD_SETEPCONFIG, (0u << 1) | (512u << 3), (1u << 8) | (1u << 10) | (0u << 25), 0) ||
++	    ud_epcmd(0, DEPCMD_SETEPCONFIG, (0u << 1) | (64u << 3), (1u << 8) | (1u << 10) | (0u << 25), 0) ||
+ 	    ud_epcmd(0, DEPCMD_SETTRANSFRESOURCE, 1, 0, 0) ||
+-	    ud_epcmd(1, DEPCMD_SETEPCONFIG, (0u << 1) | (512u << 3), (1u << 8) | (1u << 10) | (1u << 25), 0) ||
++	    ud_epcmd(1, DEPCMD_SETEPCONFIG, (0u << 1) | (64u << 3), (1u << 8) | (1u << 10) | (1u << 25), 0) ||
+ 	    ud_epcmd(1, DEPCMD_SETTRANSFRESOURCE, 1, 0, 0)) {
+ 		printf("SWEET USB: endpoint 0 setup failed\n");
+ 		return;
+ 	}
+ 	dwc_wr(DALEPENA, 0x3);
+ 	ud_start_setup();
+-
+-	vm_offset_t qs = ml_io_map(QSCRATCH_PA, 0x100);
+-	if (qs != 0) {
+-		uint32_t hs = usb_rd(qs, QSCRATCH_HS_PHY_CTRL), ss = usb_rd(qs, QSCRATCH_SS_PHY_CTRL);
+-		printf("SWEET USB: QSCRATCH HS_PHY_CTRL 0x%08x SS_PHY_CTRL 0x%08x GENERAL_CFG 0x%08x\n",
+-		    hs, ss, usb_rd(qs, 0x08));
+-		*(volatile uint32_t *)(qs + QSCRATCH_HS_PHY_CTRL) = hs | UTMI_OTG_VBUS_VALID | SW_SESSVLD_SEL;
+-		*(volatile uint32_t *)(qs + QSCRATCH_SS_PHY_CTRL) = ss | LANE0_PWR_PRESENT;
+-		__asm__ volatile ("dsb sy" ::: "memory");
+-		printf("SWEET USB: VBUS override on: HS_PHY_CTRL 0x%08x SS_PHY_CTRL 0x%08x\n",
+-		    usb_rd(qs, QSCRATCH_HS_PHY_CTRL), usb_rd(qs, QSCRATCH_SS_PHY_CTRL));
++	if (ud.fault) {
++		return;
+ 	}
+ 
+ 	dwc_wr(DCTL, dwc_rd(DCTL) | DCTL_RUN_STOP);
+@@ -919,12 +1304,20 @@
+ 		delay(1000);
+ 	}
+ 	printf("SWEET USB: running (DSTS 0x%08x after %d ms), DMA at 0x%llx\n", dwc_rd(DSTS), i, ud.dma_pa);
+-	if (kernel_thread_start(ud_thread, NULL, &thread) == KERN_SUCCESS) {
+-		thread_deallocate(thread);
+-	}
++	if (dwc_rd(DSTS) & DSTS_DEVCTRLHLT) {
++		dwc_wr(DCTL, dwc_rd(DCTL) & ~DCTL_RUN_STOP);
++		return;
++	}
++	if (kernel_thread_start(ud_thread, NULL, &thread) != KERN_SUCCESS) {
++		dwc_wr(DCTL, dwc_rd(DCTL) & ~DCTL_RUN_STOP);
++		printf("SWEET USB: event thread start failed; controller stopped\n");
++		return;
++	}
++	thread_deallocate(thread);
++	printf("SWEET USB: %s console profile started\n", ud.serial ? "CDC ACM" : "ECM UDP");
+ 	int livelog = 1;
+ 	PE_parse_boot_argn("sweetusblog", &livelog, sizeof(livelog));
+-	if (livelog && ud.ifp != NULL && kernel_thread_start(ud_log_thread, NULL, &thread) == KERN_SUCCESS) {
++	if (!ud.serial && livelog && ud.ifp != NULL && kernel_thread_start(ud_log_thread, NULL, &thread) == KERN_SUCCESS) {
+ 		thread_deallocate(thread);
+ 	}
+ }
