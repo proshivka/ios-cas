@@ -22,8 +22,10 @@ Verified on the phone with temporary boot images and persistent console files:
 Boot-task output currently stops after the init_featureflags exec checkpoint.
 That checkpoint is before exec completion; the runtime blocker is still under
 investigation. Patch 0092 adds bounded writer heartbeats, sampler wait/iteration
-boundaries, and an option to skip user stack reads. Native compilation passed in
-CI run 42476926270 and artifact checks passed; a new hardware check is pending.
+boundaries, and an option to skip user stack reads. Its native build and artifact
+checks passed for CI run 42476926270. A fresh device snapshot records an initial
+timeout and completed sampler iteration; later timed progress is not saved.
+A same-kernel control with the reviewed idle waits disabled is ready for hardware.
 Input and USB were disabled in these
 root diagnostics; SpringBoard has not been observed on cas.
 

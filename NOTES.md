@@ -1,3 +1,62 @@
+### 2026-11-08 — r14: fresh progress timings verified; idle-wait control copied
+
+Fresh sweetlog-progress-3fbef877d29c4c09a47e6da2e7c26a0b was collected at
+2026-11-08T12:14:05Z: valid v1, total 37435, sequence 8, matching image marker
+sweetlogid=922bea967f8b478f and raw SHA256
+f406ae5ea3f325cd2d9d6765d38a97a78b7eba051b91a69000910c5b8e0868c6.
+Raw-derived text matches after the reviewed decoder's CR removal. The user
+reports waiting about five minutes. First writer timeout took ~1.00129s,
+sampler initial timeout ~1.00342s (35/EWOULDBLOCK), and sampler iteration 0
+completed before entering its five-second interval wait. Callback-out and
+disabled-frame banners are saved. No subsequent interval return is saved.
+
+The last saved clock is only 1.44745s after the writer began and 0.43870s
+after sampler interval wait-in. Later nominal sampler/heartbeat deadlines
+are after that saved time. Missing repeat output alone therefore does not
+prove timer failure. Sequence 8 proves ring/header writes progressed beyond
+the saved cycle-8 lock-acquired line; sync-8 completion remains unseen.
+UFS SCSI polling can itself sleep on timed waits while holding its mutex, so
+writer persistence and sampler timeouts are coupled observations. FIPS passed.
+
+Read-only review of exact buildtree timer/idle sources found consistent
+CNTVCT+base time reads and relative, clamped CNTV_TVAL programming; no
+absolute-32bit truncation is established. High absolute clock values may
+retain a warm-boot offset. Ranked hypotheses are reviewed idle waits/delivery,
+writer/UFS persistence, generic timer rearm/masking, then helper/global lock
+blockage. Last exec-note still does not identify init_featureflags as culprit.
+Evidence: timer-wake-fixtures/fresh-progress-analysis.json, source-manifest.json
+and ranked-triage.json.
+
+Prepared the cheaper same-kernel control with wfi=0 wfe_mode=0 and fresh marker
+sweetlogid=d51032f920754ed5. Image:
+C:/ports/r14-rootmount/boot-idleoff-42476926270/boot.img, 17772544 bytes,
+SHA256 172017b96307cc0d8924fd305490f094f68427f08ffe328a74e93bd21838e428.
+Source stays 1fcee5855fac91d4b7093e04c86481402b940688 / run 42476926270,
+kernel a8b55612514ef85ea41fedf46148a2dc5e01ac0aae4050e050390d4e60d6d7ac.
+All original profile tokens are preserved except the new marker and two idle
+arguments. Exactly 63 changed bytes are confined to Android ID and payload
+cmdline. All ten native segments, shim/DTB/ADT/layout and timer INTID 27 match.
+Both Android IDs and complete image differences were checked independently.
+This bypasses reviewed explicit idle WFI/WFE waits and the WFI cache-enter
+path; SetIdlePop/ClearIdlePop, bookkeeping and non-idle waits still remain.
+
+timer-wake-fixtures/idleoff_device.py pins the new image and collects unique
+sweetlog-idleoff files, adding idle-argument/repeat-sample/later-heartbeat flags.
+Typed interfaces, target/log negative fixtures, local image/rootfs pins and
+PowerShell syntax passed; mypy is not installed, so no static type-check result
+is claimed. Independent image/command review passed. Helper SHA256
+8cf6dfd85ffa84b87c8b5d2d927bc6250d8cc91a1956c7ccd454b0489c033aca.
+Readback/test/review receipts are under timer-wake-fixtures.
+
+The temporary boot command is copied with exact readback; boot-clipboard.json
+records it. No device/network command was executed locally and no new native
+build is needed. Next: user enters fastboot, runs timer-wake-fixtures/
+boot-command.txt, observes at least 60 seconds, returns to TWRP and runs the
+matching collect-command.txt. Require fresh marker, actual later timeout/
+heartbeat/sample boundaries and elapsed-counter span beyond five seconds.
+A positive control narrows the idle wait/cache class, not one instruction;
+then isolate WFI versus WFE. A negative remains limited by UFS visibility.
+
 ### 2026-11-08 — r14: progress boot accepted; recovery collection command copied
 
 manual-boot-r14-progress.json records bootloader acceptance at
