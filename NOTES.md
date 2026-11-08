@@ -49,8 +49,28 @@ https://github.com/proshivka/ios-cas/actions/runs/42493724268.
 The account query confirmed proshivka before remote writes. Final independent
 review found no unresolved correctness blockers; source-review.json retains
 the verdict. Helpers are pinned independently of subsequent handoff commits.
-Native/artifact acceptance and the0094 phone test are pending. No0094 phone
-boot has occurred yet.
+Run42493724268 completed successfully; its pinned final status, artifact
+metadata and full build log are saved. Kernel ZIP artifact13622768117 SHA256
+c17d5c52dbc56dcb600f6f7a50a812216e15f82eac81d360a01cc67d6d0164c7;
+buildtree ZIP artifact13622842689 SHA256
+251a61571a71c43de7d88a2637de4d268c47a49f9ec9805b02045b9f6632977e.
+Both live artifact identities, lengths and ZIP digests passed. Native kernel
+SHA25677653b5a54f0b9d249c678ba9abbc197c116d9df082ff3bffd25c46fccc0693c.
+All four checked C files match the compiled buildtree, the new linked IRQ/
+control/wake exports and loaded markers passed. Twenty pipeline cases and
+thirteen additional record/attribution assertions passed.
+
+Accepted image C:/ports/r14-rootmount/boot-postexec-42493724268/boot.img,
+17788928 bytes, SHA256
+cd9fdf294fc35c459d48348d82d25ae0d72635c5621894652d5e7aa2dd6a563a,
+marker sweetlogid=218f5adbf5e04394. The existing pstore ADT is byte-identical;
+other container components and RAM mappings are preserved. Acceptance:
+postexec-fixtures/boot-ready.json. Native recovery probe again confirms CAS,
+root TWRP, /dev/block/sda34 size99989061632, 16GiB HFS+ and ramoops layout.
+Next: temporary boot this image once, then read RAM/UFS logs on manual return
+to TWRP after approximately two minutes. The new hidden watcher executes all
+collection commands; it does not reboot the device. Native code is accepted;
+the0094 hardware test is pending. No0094 phone boot has occurred yet.
 
 ### 2026-11-08 — r14: automatic CAS log collection and RAM persistence verified
 
