@@ -1,4 +1,4 @@
-### 2026-11-08 — r14: CAS USB ACM warm-handoff patch checked; native CI next
+### 2026-11-08 — r14: CAS USB native image accepted and temporarily booted
 
 Branch proshivka/r14-cas-usb-console-20261108 contains the opt-in0095 USB
 diagnostic and explicit /sweet-usb resources in tools/mkadt.py. Separate
@@ -39,11 +39,58 @@ reservation; new arguments are571 bytes. Independent source review found no
 remaining blockers at the exact final C hash. Portable host reader:
 tools/sweet-usb-console.py (pyserial3.5 installed only in fixture deps).
 Its capture requires the fresh image marker and ACM banner for attribution.
-Checks/receipts remain in the USB fixtures; CI and hardware are still pending.
-Next commit/publish as proshivka, dispatch one exact-source xnu build,
-verify native sources/artifacts, prepare and boot the marked temporary image,
-capture COM output and retain automatic TWRP RAM/UFS collection fallback.
-The selected CAS was confirmed in root TWRP with the16GiB HFS+ root intact.
+Implementation/source 58ed0cf80fd53c0ae480e1874295166599c57ba7 was published
+as proshivka on the branch above. Exactly one xnu run 42499771203 succeeded:
+https://github.com/proshivka/ios-cas/actions/runs/42499771203.
+Final status, artifact metadata and full native build log are retained in
+usb-cas-fixtures/ci-42499771203-attempt-1. Both ZIP identities, lengths and
+digests passed: kernel artifact 13625373008 SHA256
+37d7f70da294f9e46390ff3b58b684ad5a74633c080d7ff8dfa452a502660491;
+buildtree artifact 13625607234 SHA256
+fb17e457b1202390bf9759f4d60a1621a48d0e0c7a91bcbe8ddad0889381df1b.
+All five compiled C sources exactly match their reviewed fixture files;
+loaded native USB/pstore markers and 20 pipeline acceptance cases passed.
+Native kernel SHA256
+f7a4df5716d30ad246a22c23d6f1c044917039546365007665e6c7af0ad27e61.
+
+Accepted image C:/ports/r14-rootmount/boot-usbacm-42499771203/boot.img,
+17788928 bytes, SHA256
+ac4cf6d70e8de6379bd5fa339ef4416a91910235c65832668887be85dd2484bd,
+marker sweetlogid=e7d8c1b087f64f48. The USB node is additive, all unrelated
+ADT/container properties and the RAM reservation are preserved. Receipt:
+usb-cas-fixtures/boot-ready.json. The device helper independently checks the
+native USB profile, exact arguments and image/payload readback before boot.
+
+The user directly requested temporary boot. Root TWRP, CAS identity,
+userdata /dev/block/sda34 size99989061632, its16GiB HFS+ root and ramoops
+reservation were rechecked at16:33Z. Host USB reader source, fixture-local
+pyserial3.5 and Windows port enumeration passed. Native ADB switched the
+selected CAS to fastboot; product cas was checked before temporary boot.
+Transfer and boot returned OKAY, exit 0, total 0.491s at
+2026-11-08T16:42:09.858980Z. This is bootloader acceptance only. Receipt:
+C:/ports/r14-rootmount/manual-boot-r14-usbacm.json. No partition was flashed.
+
+Hidden USB reader PID 2160 started at 16:41:46Z before boot, with bounded
+180s port wait / 180s capture and required fresh marker plus ACM banner.
+usb-cas-fixtures/usb-watch-launch.json and usb-watch-status.json retain
+its state/output paths. Capture stem:
+C:/ports/r14-rootmount/usb-console-cas-435f6b81c4954065b9877fc0f79da91a.
+At 16:42:52Z no matching CDC ACM port or Windows VID1209/PID0001 device
+was observed; zero USB bytes were captured and hardware is unverified.
+
+Hidden recovery reader PID 19500 started at 16:42:26Z and local analysis
+watcher PID 12964 at 16:42:27Z. They wait for this known CAS / fresh local
+capture for 1800s, collect RAM/UFS once, and analyze only matching evidence.
+Their recovery-watch-* and analysis-watch-* launch/status/output files are
+in usb-cas-fixtures. Neither watcher reboots the phone. The USB analyzer is
+a separate copy, now accepting all Mach-O instruction sections including
+__hib_text; exact/offset memcpy, invalid-PC and truncated-image checks pass.
+Accepted0094 evidence and its old analyzer receipt remain unchanged.
+Next observe the active USB capture, then on manual return to TWRP read
+the automatic RAM/UFS collection and USB diagnostic lines. Preserve this
+single observation; do not launch duplicate CI/images while awaiting it.
+The user was told to give the boot at least two minutes. All CLI/build/device
+commands remain explicitly authorized. USB operation is unverified yet.
 
 ### 2026-11-08 — r14: post-exec capture complete; CAS USB bring-up requested
 
