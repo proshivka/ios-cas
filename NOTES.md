@@ -1,3 +1,44 @@
+### 2026-11-08 — r14: progress diagnostics compiled; artifact/image preparation copied
+
+Run 42476926270, attempt 1, completed successfully for exact source
+1fcee5855fac91d4b7093e04c86481402b940688 on
+proshivka/r14-progress-diag-20261108:
+https://github.com/proshivka/ios-cas/actions/runs/42476926270
+The saved state confirms the native Build step and buildtree packaging passed.
+Full-log audit finds patch 0092 applied and one compile command for each of
+bsd/dev/sweet_ufs.c, bsd/dev/sweet_sample.c and osfmk/kern/exception.c, with
+no compiler error on those files. Collected kernel size is 17205448 bytes.
+Evidence: progress-fixtures/ci-42476926270-attempt-1/ci-local-check.json;
+full-log SHA256 5dc9584b81b9cbfc18ea541875c2366b061fef33e30b17208b91f9c71a9d8071.
+
+Pinned artifacts: xnu-kernel id 13616605053, 60560173 bytes, ZIP SHA256
+5627293a7942cd41abc237cf9e633d33d2da67758d3fc1c6f92d02d07b377281;
+xnu-buildtree id 13616315557, 23095406 bytes, ZIP SHA256
+d2d836de1736f5d19473ead418a0e3686ef5e67d4fe79b4d7c0b3600907bf84b.
+Prepared progress-fixtures/download_artifacts.py checks saved and live
+source/attempt/artifact identities, authenticates proshivka and verifies ZIP
+digests and the collected kernel checksum/size. prepare_boot.py compares all
+three compiled sources with checked 0092 inputs, checks the native arm64
+kernel and new diagnostic markers, then reuses the accepted Android v2
+container, shim, ADT, RAM mapping and virtual timer INTID 27.
+
+The intended new profile uses ufslogheartbeat=5 sweetsampletrace=1
+sweetsamplestack=0, sampler timing 1/5 and a fresh sweetlogid marker.
+Offline checks passed: six download cases and saved CI metadata; exact
+accepted donor reproduction; corrupt Android ID and older kernels rejected,
+including the accepted 0091 kernel; the 507-byte profile fits the container.
+These packing fixtures used old kernels, not the new downloaded kernel.
+Derivation and test receipts are stored under progress-fixtures.
+
+prepare-command.txt was copied with PowerShell parsing and exact readback
+verified; receipt is progress-fixtures/prepare-clipboard.json. It runs download
+then acceptance/packing from the user's PowerShell because GitHub remains
+unavailable in the sandbox. Current new-kernel acceptance is pending; no
+boot-progress-42476926270/boot.img or device result exists yet. Next: inspect
+the downloaded/accepted receipts and fresh boot-ready.json, then prepare the
+temporary boot and matching recovery reader. Existing rootfs remains the
+accepted r13 image; this handoff needs no new partition write.
+
 ### 2026-11-08 — r14: sampler frames resolved; bounded progress diagnostics ready for CI
 
 Fresh sweetlog-sample1s-7c387826904e4917975950cec14d2edb was collected at
