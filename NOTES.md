@@ -41,12 +41,20 @@ review passed, including the kernel declaration in mach/mach_time.h.
 Evidence: progress-fixtures/accepted-source-manifest.json, check-result.json
 and review.json. This is not native compilation or a hardware result.
 
-Next source is on proshivka/r14-progress-diag-20261108. The prepared
-progress-fixtures/launch_ci.py pins that commit and patch, checks account
+Diagnostic implementation is committed as
+e9fe8312cb06e8428391f0ee7bcc5ff21a71354a, authored and committed by
+proshivka <kasikminecraft@mail.ru>. The CI source also includes this handoff
+record on proshivka/r14-progress-diag-20261108. The prepared
+progress-fixtures/launch_ci.py pins the final clean head and patch, checks account
 proshivka before remote writes, publishes only the exact source and reuses
 or dispatches its xnu.yml build once. launch-ci-command.txt watches and saves
 final status, artifact metadata and the complete log. GitHub remains
 unavailable from the local sandbox, so the user runs it from PowerShell.
+Local launcher identity, inherited offline-fixture checks and clipboard
+readback receipts are stored in progress-fixtures; the final build source
+is recorded in those receipts. Git checks document whitespace separately
+from unified-diff context prefixes; patch 0092 is unchanged from the checked
+apply/reverse replay and SHA256 above.
 After native success, verify artifacts and all three compiled TUs before
 packing a fresh diagnostic with ufslogheartbeat=5 sweetsampletrace=1
 sweetsamplestack=0 and existing sampler timing 1/5. No new boot image has
