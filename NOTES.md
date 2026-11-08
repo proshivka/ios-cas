@@ -91,6 +91,15 @@ the new marker plus RAM banner before attributing pmsg to this image.
 RAM retention remains hardware-pending. The user should only need the
 physical return to recovery; CLI commands are now explicitly authorized here.
 
+A hidden read-only watcher was started at 2026-11-08T14:34:39.349672Z for
+1800 seconds. It waits for the selected CAS, verifies root recovery, and
+runs the pstore collector once. Process/stdout/stderr are recorded in
+pstore-fixtures/recovery-watch-process.json; live status is in
+pstore-fixtures/recovery-watch-status.json. If it completes, begin the next
+turn by reading pstore-fixtures/latest-collection.json and its actual pmsg
+and UFS text files. If expired, run pstore_device.py collect directly when
+the user returns to TWRP. Do not start another build or repeat this boot.
+
 ### 2026-11-08 — r14: idleoff recovery log collected directly and verified
 
 The user returned to TWRP after the accepted idleoff temporary boot:
