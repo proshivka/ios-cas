@@ -1,3 +1,50 @@
+### 2026-11-08 — r14: automatic CAS log collection and RAM persistence verified
+
+The pending 0093 build/acceptance/temporary-boot/recovery test is complete.
+Source adf1612f380f2e08bcd13689647f9767c59a7f4a, successful Actions run
+42489183935, image SHA256
+62ca23f5d45c9016df09fcbdec3e649d0271fa5bc69ca6e351a6b5e9d62a90f1,
+marker sweetlogid=dc97954b00ab46f9. Native ADB/fastboot and all build/device
+commands were executed here under the user's explicit authorization.
+
+The selected CAS returned to root TWRP. The hidden watcher automatically
+collected at 2026-11-08T14:35:22.824940Z and exited; no watcher/build remains
+active. Metadata and raw/text files:
+C:/ports/r14-rootmount/sweetlog-pstore-2eb6abf1ac3b4d8c97d78c5a000ee222
+(.json, .pmsg.bin/.txt, .console.bin/.txt, .ufs.bin/.txt).
+Pmsg has 64124 bytes, SHA256
+908df5b9a289a4e4fcd94fd8ff1e17414b4f7c2f33a5396f5942a6fddbf842a7,
+the matching image marker and RAM banner. UFS area has exactly 4198400 bytes,
+SHA256 21a8d573b990bcde084d8729fe66356ac2261292cb382a506e7eb01ff6a781eb,
+37275 console bytes, sequence8 and the matching marker. Raw/text equality,
+all file digests and independent UFS ring reconstruction passed. This
+physically verifies the additional RAM log path and direct recovery reader
+for this boot stage; no photographs/OCR were needed. Proof and current paths:
+pstore-fixtures/hardware-verification.json and latest-collection.json.
+
+Independent triage confirms 272 complete PST records: 256 ordinary and16
+critical, with eight complete timer entry/exit pairs. One IRQ note is
+embedded in a partial console line at pmsg line499; the collector classifier
+was corrected and20 offline checks pass. The original capture JSON remains
+unchanged; hardware-verification.json contains the corrected counts.
+Cycle8 completed header/ring writes, sync, unlock and cycle9 wait-in. All40
+recorded SCSI polls clear the doorbell (22 reads,12 writes,6 syncs), all39
+recorded cache completions have OCS0, and no poll-spin/timeout is observed.
+The final cache-out is beyond the ordinary256-note budget, not evidence of
+an invalidation stall. Timer INTID27 expiry/rearm is confirmed in the observed
+window; critical budget is only16/192 used, IRQ ordinals9..63 are unsampled.
+
+Boot still stops near the init_featureflags event at clock276675564
+(14.410185625s at19.2MHz). The approximately176s boot-acceptance-to-recovery
+kernel-start wall interval is reconstructed from current Linux uptime in
+postboot-recovery-uptime.json. It does not establish XNU scheduling state.
+The post-init cause is unresolved; do not claim a UFS sync stall or dead timer.
+Next diagnostic: retain budget for a short consecutive timer/IRQ ordinal and
+interrupted-PC capture triggered by init_featureflags, then writer wait state
+and a targeted launchd/featureflags thread snapshot. Avoid another identical
+0093 boot or duplicate CI. Continue to execute CLI commands here; the phone
+is in TWRP and the 16GiB HFS+ root has been verified intact.
+
 ### 2026-11-08 — r14: autonomous device/build operation; pstore diagnostics checked
 
 The user enabled unrestricted execution, verified native adb devices, and
