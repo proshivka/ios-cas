@@ -1,3 +1,18 @@
+### 2026-11-08 — r14: earlier sampler boot accepted; recovery collection command copied
+
+manual-boot-r14-sample1s.json records bootloader acceptance at
+2026-11-08T11:06:23.059059Z for image
+5fd1d27503b1c9e01900f37e921a6576fefefda1b86705562f795dd922e18303,
+source a8ebc120 / run 42294101668, marker sweetlogid=eb295a6091ab4921,
+sampler first 1 / interval 5. The user has returned to TWRP. The matching
+collect-command.txt is copied with exact readback; receipt is
+early-sample-fixtures/collect-clipboard.json. Generated helper SHA256
+e74c9c429997c42cab2940e43f62a38ff45f1b556d3333f9315a4fd8f8c4a715
+matches the derivation record. Fresh sample1s console/hardware results are
+pending collection. Next: user runs the copied reader; inspect
+sweetlog-sample1s-*.bin/.txt/.json, verify the new marker, then inspect
+initial-wake/sample output. No local device command was executed.
+
 ### 2026-11-08 — r14: fresh late exec logs verified; earlier sampler image ready
 
 The user collected sweetlog-phasewake-c56cfb5406ec447daf2670f8bff19895 at
