@@ -1,3 +1,48 @@
+### 2026-11-08 — r14: fresh late exec logs verified; earlier sampler image ready
+
+The user collected sweetlog-phasewake-c56cfb5406ec447daf2670f8bff19895 at
+2026-11-08T10:56:40Z. The raw area is 4198400 bytes, SHA256
+6aa3b50a722969f3a27aeb1c9472735fc00a2edbef28be542569dedbcb270ad0;
+v1 header total 36785, sequence 11. Raw-derived text exactly matches the
+saved console and contains sweetlogid=7349b024dc0c421b. All three late
+exec-note checkpoints are persisted. FIPS all tests passed; no sampler
+initial-wake/sample banner is present anywhere in the raw area. Padding
+after the console is zero. Fresh late exec persistence is now observed.
+
+Source review: writer skips unchanged console and caps phase prints at
+eight cycles, so sequence 11 and missing later phases do not show a stopped
+writer. Timed waits worked at roughly one-second intervals through 18.24s.
+Sampler configured at about 12.22s; first=15 schedules its return near 27.22s,
+after the final visible late exec near 18.87s. The exec marker is inside
+signature/platform checks before exec completion. Neither a specific
+init_featureflags user-code wait nor global timer failure is established.
+Evidence: early-sample-fixtures/fresh-console-analysis.json.
+
+Prepared C:/ports/r14-rootmount/boot-sample1s-42294101668/boot.img,
+17772544 bytes, SHA256
+5fd1d27503b1c9e01900f37e921a6576fefefda1b86705562f795dd922e18303.
+Only sweetsamplefirst=15->1, sweetsampleinterval=30->5 and the new
+sweetlogid=eb295a6091ab4921 changed. All loaded segments, ADT, shim, DTB,
+memory layout and timer27 match the accepted phasewake image byte for byte.
+Independent file comparison restricts all 70 changed bytes to the fixed
+payload command line and Android ID; ID/readback and pinned image/rootfs
+receipt checks passed. Kernel source stays a8ebc120 / run 42294101668,
+SHA256 213d4237820f19eeaff7b257e786d4ad95298f65039f95bdb06f324fb2837af6.
+
+early-sample-fixtures/sample1s_device.py preserves the reviewed known-cas
+boot/reader checks with the new image pins, receipt and snapshot names.
+Offline helper checks and both PowerShell wrappers passed without device
+commands or private serial reads. Evidence: boot-ready.json, derivation.json,
+device-handoff.json and device-command-check-result.json in that directory.
+Next: user enters fastboot, runs its boot-command.txt, waits at least
+150 seconds, returns to TWRP and runs collect-command.txt. Boot acceptance
+will be recorded in manual-boot-r14-sample1s.json; new logs use
+sweetlog-sample1s-*. Inspect initial-wake/sample banners before interpreting
+frames. proc_iterate can wait for any process transition and stack reads
+hold task_lock, so the sampler may block or perturb a task. This is a
+diagnostic, with hardware outcome pending. No kernel rebuild or flash was
+performed; collection files can be read directly without another photo.
+
 ### 2026-11-08 — r14: phasewake boot accepted; recovery collection pending
 
 The new manual-boot-r14-phasewake.json records bootloader acceptance at
