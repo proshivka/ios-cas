@@ -1,3 +1,24 @@
+### 2026-11-08 — r14: phasewake boot accepted; recovery collection pending
+
+The new manual-boot-r14-phasewake.json records bootloader acceptance at
+2026-11-08T10:45:46.662741Z for run 42294101668/source a8ebc120,
+image 7efe7d8428271e5b02ea72ca8797eb757cf4d6bdb3117d785cd8e92886dd2e55,
+marker sweetlogid=7349b024dc0c421b. The user has returned to TWRP and asked
+for log collection. This confirms transfer/boot acceptance, not late logging.
+
+The local collector failed before reading the device: adb.exe reports
+Cannot mkdir '\.android': Permission denied. ANDROID_USER_HOME and
+ANDROID_SDK_HOME in writable workspace directories did not resolve startup.
+A read-only local server probe at 127.0.0.1:5037 was refused. No new
+sweetlog-phasewake files were found; no device read completed.
+
+The unchanged collect-command.txt was copied with exact clipboard readback
+at 2026-11-08T10:55:44Z. Receipt: phase-wake-fixtures/collect-clipboard.json.
+Next: user runs this command from their PowerShell while still in TWRP;
+inspect the resulting raw/text/JSON files directly, validate the image marker,
+then inspect writer phases and sampler output. A photo is not needed for this
+file collection. Hardware persistence and the boot stall remain unconfirmed.
+
 ### 2026-11-08 — r14: temporary boot command copied again; hardware result pending
 
 At 2026-11-08T10:44:12Z, boot-command.txt was copied again with exact clipboard
