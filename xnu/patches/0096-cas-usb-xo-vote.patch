@@ -1,0 +1,87 @@
+--- a/bsd/dev/sweet_usb.c
++++ b/bsd/dev/sweet_usb.c
+@@ -3,8 +3,9 @@
+  * Board resources must match /sweet-usb before MMIO. Mode1 only reads the
+  * clock-gated state; mode2 restarts ABL's powered peripheral controller.
+  * CAS uses SNPS femto at0x088e3000 and SM8250 GCC offsets, with the USB2
+- * UTMI-as-PIPE sequence from Linux dwc3-qcom. PHY supplies/reference clock
+- * remain as ABL initialized them; this driver does not control PMIC rails.
++ * UTMI-as-PIPE sequence from Linux dwc3-qcom. PHY supplies and clock rates
++ * remain as ABL initialized them; mode2 may restore the shared GCC XO vote.
++ * This driver does not control PMIC rails.
+  */
+ #if defined(ARM64_BOARD_CONFIG_SWEET)
+ #include <sys/param.h>
+@@ -37,6 +38,7 @@
+ extern vm_offset_t ml_io_map(vm_offset_t, vm_size_t);
+ void sweet_usb_probe(void);
+ static void sweet_usb_gadget_start(vm_offset_t dwc);
++static void usb_write(vm_offset_t base, uint32_t offset, uint32_t value);
+ extern ppnum_t pmap_find_phys(pmap_t pmap, addr64_t va);
+ extern void thread_terminate_self(void) __attribute__((noreturn));
+ 
+@@ -44,6 +46,7 @@
+ #define GCC_SIZE                0x00090000
+ #define GCC_USB30_PRIM_GDSCR    0x0f004         /* bit 31: power on */
+ #define CBCR_CLK_OFF            (1u << 31)
++#define CBCR_CLK_ENABLE         (1u << 0)
+ 
+ static const char *const usb_clk_names[] = {
+ 	"master", "sleep", "utmi", "cfg-noc-axi", "aggre-axi", "ahb2phy", "clkref",
+@@ -119,6 +122,38 @@
+ 	return v;
+ }
+ 
++/* SM8250's GCC_USB3_SEC_CLKREF_EN feeds both USB instances, including HS. */
++static bool
++usb_cas_enable_xo(vm_offset_t gcc, uint32_t *state)
++{
++	if (usb_board == NULL || !usb_board->cas || usb_board->cbcr[6] != 0x8c010) {
++		return false;
++	}
++	uint32_t off = usb_board->cbcr[6];
++	uint32_t before = usb_rd(gcc, off);
++	bool acquired = !(before & CBCR_CLK_ENABLE);
++	if (acquired) {
++		usb_write(gcc, off, before | CBCR_CLK_ENABLE);
++	}
++	for (unsigned waited = 0; waited < 1000; waited++) {
++		*state = usb_rd(gcc, off);
++		if ((*state & CBCR_CLK_ENABLE) && !(*state & CBCR_CLK_OFF)) {
++			printf("SWEET USB: CAS XO vote 0x%08x -> 0x%08x after %u us\n",
++			    before, *state, waited);
++			return true;
++		}
++		delay(1);
++	}
++	/* Release only the enable bit we acquired; preserve current other bits. */
++	if (acquired) {
++		usb_write(gcc, off, usb_rd(gcc, off) & ~CBCR_CLK_ENABLE);
++	}
++	*state = usb_rd(gcc, off);
++	printf("SWEET USB: CAS XO vote timeout after 1000 us, before 0x%08x now 0x%08x\n",
++	    before, *state);
++	return false;
++}
++
+ void
+ sweet_usb_probe(void)
+ {
+@@ -194,8 +229,15 @@
+ 		printf("SWEET USB: PHY access clocks off; PHY not read\n");
+ 	}
+ 	if (enabled == 2) {
+-		/* Gadget DMA and the USB2 datapath need all five wrapper clocks and XO. */
+-		if ((cbcr[1] | cbcr[2] | cbcr[4] | cbcr[6]) & CBCR_CLK_OFF) {
++		/* Check all five wrapper clocks before acquiring the shared CAS XO. */
++		if ((cbcr[1] | cbcr[2] | cbcr[4]) & CBCR_CLK_OFF) {
++			printf("SWEET USB: gadget clocks off; retaining ABL state\n");
++			return;
++		}
++		if (usb_board->cas && (cbcr[6] & CBCR_CLK_OFF) && !usb_cas_enable_xo(gcc, &cbcr[6])) {
++			return;
++		}
++		if (cbcr[6] & CBCR_CLK_OFF) {
+ 			printf("SWEET USB: gadget clocks off; retaining ABL state\n");
+ 			return;
+ 		}

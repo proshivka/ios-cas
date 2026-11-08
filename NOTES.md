@@ -1,3 +1,61 @@
+### 2026-11-08 — r14: USB rejection recovered; bounded CAS XO vote checked
+
+The user returned CAS to TWRP. All three 0095 watchers completed: automatic
+RAM/UFS collection at 16:45:23Z, local analysis at 16:45:26Z, and USB host
+wait expired at 16:44:48Z with zero bytes / no matching CDC ACM port.
+Capture stem C:/ports/r14-rootmount/sweetlog-usbacm-4e69b29354c24765808e8c3c7ea1e67e;
+metadata and analysis are usb-cas-fixtures/latest-collection.json and
+hardware-analysis.json. Pmsg has 94667 bytes, SHA256
+c9539551e30724f655a91c46fd44044e37be9a71019661db1538ea7f91b576cf.
+UFS is exactly 4198400 bytes, SHA256
+47b3237c4ec922742713f390b2b71ed214abd651f7e5aa3542117e3384478f18,
+41558 console bytes / sequence 7. Both paths have the fresh image marker;
+file digests, decoded bytes and independent ring reconstruction passed.
+
+The early USB log shows GDSC 0xf822f000 and all five wrapper clocks on,
+accepted DWC31 ID 0x33313130, but shared XO CBCR 0x8c010 is 0x80000000
+(disabled/halted). 'gadget clocks off; retaining ABL state' is the last USB
+stage. Startup never reached the controller reset, descriptors or ACM
+thread. This establishes the current gate rejection, not successful USB.
+Both saved Linux trees assign GCC_USB3_SEC_CLKREF_EN to primary controller
+clock 'xo'; downstream explicitly shares it between both ports and enables
+it while waking HSPHY. It is not an optional SS-only gate for this path.
+
+Boot-hang evidence remains separate: no panic observed, 25 complete INTID27
+pairs, 418 PST notes and repeated sampler iterations. Final captured clock
+277896155 (~14.474s) precedes writer deadline 295359132 (~15.383s); no
+expired-writer-deadline sample exists. Last sampled init_featureflag tid207
+was runnable, with HFS reads, SHA256 and user PCs observed. The end of this
+capture does not establish a dead timer, stalled IRQ, UFS stall or root cause.
+
+New branch proshivka/r14-cas-usb-xo-20261108 / additive patch0096 changes
+only sweet_usb.c after accepted0095. Separate fixtures usb-xo-fixtures
+verify all five baseline C files against run42499771203. Mode2 on validated
+CAS first requires GDSC, all five wrapper branches and a valid controller
+ID, then uses a fresh 0x8c010 read to acquire only BIT(0). Polling has at most
+1000 one-microsecond waits plus MMIO overhead; success requires both
+enable=1 and CLK_OFF=0. Timeout clears
+only an enable bit originally clear, using a fresh read to preserve current
+unrelated bits; it returns before DMA/controller reset. Mode1 remains
+read-only. No PHY/PMIC, reset-vote or other clock write is added.
+
+Strict additive replay/source equality and 55 actual-C host cases passed,
+including the exact captured handoff, dependency/identity rejection,
+acquired/pre-owned timeout behavior, unrelated bits changing during wait,
+refused enable with CLK_OFF clear, and final-poll success. The USB TU compiled
+as ARM64 Mach-O with 0 failures. Nine container cases preserve the accepted
+donor/ADT/pstore and reject old0095 as a new XO kernel; command line571 bytes.
+C SHA256 68284315df84d23283f716b3f28367497eebc060d3cced7cac67240e27563266;
+patch SHA256 ae25e98d68ed745879f79a09726e535a9450379a75e7819274de1ae23b3c1c08.
+Independent final exact-hash review found no blocker to native CI; the
+existing gadget section is byte-identical to accepted0095. Verdict is saved
+in usb-xo-fixtures/source-review.json. No new CI or image has been launched yet.
+Next commit/publish as
+proshivka, dispatch one exact-source build, verify native sources/markers,
+prepare and temporarily boot the new marked image, and observe USB plus
+automatic recovery fallback. All CLI/build/device operations remain
+authorized. Physical return to TWRP is manual; no photographs are needed.
+
 ### 2026-11-08 — r14: CAS USB native image accepted and temporarily booted
 
 Branch proshivka/r14-cas-usb-console-20261108 contains the opt-in0095 USB
