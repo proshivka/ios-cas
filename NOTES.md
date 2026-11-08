@@ -70,7 +70,22 @@ root TWRP, /dev/block/sda34 size99989061632, 16GiB HFS+ and ramoops layout.
 Next: temporary boot this image once, then read RAM/UFS logs on manual return
 to TWRP after approximately two minutes. The new hidden watcher executes all
 collection commands; it does not reboot the device. Native code is accepted;
-the0094 hardware test is pending. No0094 phone boot has occurred yet.
+The image was temporarily booted directly from root TWRP at
+2026-11-08T15:33:08.043994Z after verifying the selected CAS fastboot product.
+Transfer and boot both returned OKAY, exit0, total0.494s. This establishes
+bootloader acceptance only; the0094 runtime result remains pending. Receipt:
+C:/ports/r14-rootmount/manual-boot-r14-postexec.json.
+
+Hidden native recovery watcher PID14976 started at15:33:09Z and waits for
+the known CAS root TWRP for1800s. It reads only RAM/UFS diagnostics and does
+not reboot the phone. Launch/status:
+postexec-fixtures/recovery-watch-launch.json and recovery-watch-status.json;
+output recovery-watch-c019369e341f4be88bb991828be51124.log. User was told to
+wait two minutes then manually return to TWRP. On its return, the watcher
+collects once; next read latest-collection.json and run analyze_capture.py.
+Do not reboot or launch a duplicate image while awaiting this observation.
+Current source remains3ec7c7391a577a74828b1cb79f163d680ab906b3; later handoff
+commits do not alter the accepted run/image. No CI watcher remains active.
 
 ### 2026-11-08 — r14: automatic CAS log collection and RAM persistence verified
 
