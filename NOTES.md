@@ -1,3 +1,15 @@
+### 2026-11-08 — r14: temporary boot command copied again; hardware result pending
+
+At 2026-11-08T10:44:12Z, boot-command.txt was copied again with exact clipboard
+readback. Receipt: r14-rootmount/phase-wake-fixtures/boot-clipboard.json.
+The ready image was rechecked: 17772544 bytes, SHA256
+7efe7d8428271e5b02ea72ca8797eb757cf4d6bdb3117d785cd8e92886dd2e55.
+User execution is pending: temporary boot in fastboot, observe at least
+150 seconds, return to TWRP, then collect the log file. An additional photo
+is not needed at this stage; hardware late persistence remains unconfirmed.
+No local device commands were executed. Existing source/run and image marker
+are recorded in the verified-image handoff below.
+
 ### 2026-11-07 — r14: new kernel and phasewake image independently verified; boot pending
 
 The user completed download and preparation at 2026-11-07T06:49:47Z.
