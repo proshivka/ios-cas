@@ -1,3 +1,56 @@
+### 2026-11-08 — r14: idleoff recovery log collected directly and verified
+
+The user returned to TWRP after the accepted idleoff temporary boot:
+manual-boot-r14-idleoff.json records 2026-11-08T12:34:18.307944Z,
+image SHA256 172017b96307cc0d8924fd305490f094f68427f08ffe328a74e93bd21838e428,
+marker sweetlogid=d51032f920754ed5. Source/kernel remain run 42476926270,
+commit 1fcee5855fac91d4b7093e04c86481402b940688 and kernel
+a8b55612514ef85ea41fedf46148a2dc5e01ac0aae4050e050390d4e60d6d7ac.
+
+Collected at 2026-11-08T12:51:09.948645Z to
+C:/ports/r14-rootmount/sweetlog-idleoff-993866b5874d4004852086149a99c526
+(.bin/.txt/.json). The complete 4198400-byte area has valid SWEETLOG v1,
+38092 console bytes, sequence 9, no wrap, and the matching new marker plus
+wfi=0 wfe_mode=0. Raw SHA256:
+3226defc467e40fb7edb7396f51531b6f9b91b12b88d09c13c0d981763cfd913.
+Independent ring reconstruction matches the decoded file after the reviewed
+decoder's CR removal. Root iOSRoot mounts, launchd executes, all FIPS tests
+pass, and UMD_INIT completes. No photograph/OCR was needed for this capture.
+
+The restricted-session native adb client failed before any device query with
+Cannot mkdir '\.android': Permission denied. ANDROID_USER_HOME did not change
+that behavior. The existing local ADB server at 127.0.0.1:5037 was reachable;
+timer-wake-fixtures/collect_idleoff_server.py uses its shell-v2 raw protocol.
+It pins the unchanged idleoff profile and decoder, selects the known serial
+without printing it, verifies CAS/root/exact userdata size, and only reads the
+last log area. Four identity/layout queries and one dd read succeeded, with
+device exit status 0. Binary/fragmented packet, exit status, size-bound,
+malformed-stream and partial-retention checks passed before collection.
+Collector SHA256 fb58a0587c32b2ebcde4524b881b100dd727603b797b111f74a32c3009f857c7;
+all code/evidence stays local outside git. No device write or reboot occurred.
+
+The idle bypass did not produce later persisted progress. Two writer timed
+waits returned after about 1.00129s each; sampler initial wait returned after
+1.00358s and iteration 0 completed. At calibrated 19200000Hz the last saved
+clock is 2.18016s after writer start and 1.17125s after sampler interval wait-in,
+still before the next five-second sample/heartbeat deadlines. Only heartbeat
+1 and sample 0 are saved. Final visible line is writer cycle9 lock-acquired;
+header sequence9 proves later header writing, not a lock-acquisition hang.
+Cycle8 sync completion is visible; cycle9 sync completion is not saved.
+The last exec-note is init_featureflags; it does not identify the culprit.
+No CPU/timer/storage root cause is established and HardwareLoggingFixed=false.
+
+Evidence: timer-wake-fixtures/fresh-idleoff-analysis.json and updated
+device-handoff.json. Independent read-only review also verified the 19200000Hz
+timebases in the accepted image's ADT and the pinned diagnostic sources.
+Next: bounded UFS ring/header/synchronize-cache completion traces correlated
+with timer rearm/IRQ state, keeping storage locks unchanged. Completion evidence
+must be recoverable independently of the writer under test; additional console
+prints alone preserve the visibility gap.
+Missing persisted sampler and heartbeat remain coupled observations, so avoid
+declaring a timer failure or a WFI/WFE diagnosis from this negative control.
+No new build or temporary boot was started during collection.
+
 ### 2026-11-08 — r14: fresh progress timings verified; idle-wait control copied
 
 Fresh sweetlog-progress-3fbef877d29c4c09a47e6da2e7c26a0b was collected at
