@@ -50,18 +50,46 @@ query confirms proshivka.
 
 Implementation/source commit adf1612f380f2e08bcd13689647f9767c59a7f4a was
 published as proshivka on proshivka/r14-pstore-diag-20261108. Exact-source
-Actions run 42489183935 was dispatched once and is in progress:
+Actions run 42489183935 was dispatched once and completed successfully:
 https://github.com/proshivka/ios-cas/actions/runs/42489183935.
 Independent final source review found no remaining correctness blockers;
 the four bounded-writer/header/poll/budget findings are addressed.
 CI helpers/receipts are under pstore-fixtures; ci_status.py reads the pinned
 run independently of later handoff commits and saves full final diagnostics.
 
-Next: verify CI archives, compiled sources and loaded pstore markers, add
-the gated node to the accepted ADT without changing mappings, then temporary
-boot and collect pmsg plus UFS logs. No new image is booted yet. RAM retention
-is hardware-pending; require a fresh image marker recovered from pmsg before
-claiming that this additional logging path works on the phone.
+Both archives passed the live metadata identity/digest checks. Kernel ZIP
+artifact 13620234285 SHA256
+7639106567dd92e0c864c721c4fb533806c7889890399d3c8d45d73571daa9ba;
+buildtree ZIP artifact 13620443479 SHA256
+c713fdd9a550a2aa1d6e43e1872980626eb3ac4d75b648cbbc9b1b0810e62cd7.
+Kernel SHA256 76ad3509f71814afe9784c039e37fb3994de38b3d7dacb17bcf16a77fa8eca8c.
+The three checked C files byte-match the compiled buildtree. Five pstore
+writer/reservation/timer symbols and 20 native pstore note callsites were
+verified in the linked plain arm64 kernel; loaded diagnostic strings passed.
+
+The accepted idleoff donor reproduces exactly. The added /sweet-pstore reg
+node preserves every prior ADT property; loaded segments exclude the reserved
+low 4 MiB. Boot marker/enable are placed at the front of the 538-byte command
+line to survive a bounded masked console callback. New image:
+C:/ports/r14-rootmount/boot-pstore-42489183935/boot.img, 17772544 bytes,
+SHA256 62ca23f5d45c9016df09fcbdec3e649d0271fa5bc69ca6e351a6b5e9d62a90f1,
+marker sweetlogid=dc97954b00ab46f9. Acceptance: pstore-fixtures/boot-ready.json.
+Container checks and 19 offline run/artifact/log attribution checks passed.
+Direct recovery inspection confirms the 16 GiB HFS+ root and ramoops layout;
+baseline Linux console/pmsg files were retained before the test.
+
+Temporarily booted directly from TWRP at 2026-11-08T14:32:15.068860Z after
+selected CAS bootloader product verification. fastboot transfer/boot both
+OKAY, exit0, total0.495s; receipt manual-boot-r14-pstore.json. This confirms
+bootloader acceptance only, not XNU progress or RAM retention after reset.
+
+Next: return the phone to root TWRP after at least 60 seconds and run
+Python312 -X utf8 C:/ports/r14-rootmount/pstore-fixtures/pstore_device.py collect
+directly here. It saves pmsg, console and the complete UFS area, independently
+reconstructs the SWEETLOG ring, retains failed/stale captures, and requires
+the new marker plus RAM banner before attributing pmsg to this image.
+RAM retention remains hardware-pending. The user should only need the
+physical return to recovery; CLI commands are now explicitly authorized here.
 
 ### 2026-11-08 — r14: idleoff recovery log collected directly and verified
 
