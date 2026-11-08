@@ -82,7 +82,17 @@ not reboot the phone. Launch/status:
 postexec-fixtures/recovery-watch-launch.json and recovery-watch-status.json;
 output recovery-watch-c019369e341f4be88bb991828be51124.log. User was told to
 wait two minutes then manually return to TWRP. On its return, the watcher
-collects once; next read latest-collection.json and run analyze_capture.py.
+collects once. A second hidden local analysis watcher PID18312 started at
+15:38:32Z; it waits for latest-collection.json and runs analyze_capture.py
+once after verified RAM attribution. It performs no device commands. Its
+launch/status: analysis-watch-launch.json and analysis-watch-status.json;
+output analysis-watch-f21f2f105f434aa9ae03b1ab69298ab1.log. Native kernel
+symbol resolution passed exact/offset and invalid-address cases. Next read
+latest-collection.json, hardware-analysis.json and both watcher statuses;
+avoid a duplicate analysis while the worker is active. Both waits are
+bounded at1800s. At15:38:33Z recovery had not yet reappeared and no new capture
+existed. The new boot's runtime cause is still unconfirmed; photographs are
+not needed while this automatic capture path is being used.
 Do not reboot or launch a duplicate image while awaiting this observation.
 Current source remains3ec7c7391a577a74828b1cb79f163d680ab906b3; later handoff
 commits do not alter the accepted run/image. No CI watcher remains active.
