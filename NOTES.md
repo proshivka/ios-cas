@@ -48,13 +48,20 @@ normalized to LF without changing its text. Receipt: staged-source-check.json.
 Native ADB confirms the saved CAS target in root recovery; GitHub account
 query confirms proshivka.
 
-Branch: proshivka/r14-pstore-diag-20261108. Next: publish/build the exact
-checked commit once as proshivka, verify archives,
-compiled sources and new loaded markers, add the gated node to the accepted
-ADT without changing mappings, then temporary-boot and collect both pmsg
-and UFS logs. No new diagnostic image is booted yet. Recovery retention is
-hardware-pending; do not call persistent logging fixed before a fresh marker
-is recovered from pmsg.
+Implementation/source commit adf1612f380f2e08bcd13689647f9767c59a7f4a was
+published as proshivka on proshivka/r14-pstore-diag-20261108. Exact-source
+Actions run 42489183935 was dispatched once and is in progress:
+https://github.com/proshivka/ios-cas/actions/runs/42489183935.
+Independent final source review found no remaining correctness blockers;
+the four bounded-writer/header/poll/budget findings are addressed.
+CI helpers/receipts are under pstore-fixtures; ci_status.py reads the pinned
+run independently of later handoff commits and saves full final diagnostics.
+
+Next: verify CI archives, compiled sources and loaded pstore markers, add
+the gated node to the accepted ADT without changing mappings, then temporary
+boot and collect pmsg plus UFS logs. No new image is booted yet. RAM retention
+is hardware-pending; require a fresh image marker recovered from pmsg before
+claiming that this additional logging path works on the phone.
 
 ### 2026-11-08 — r14: idleoff recovery log collected directly and verified
 
