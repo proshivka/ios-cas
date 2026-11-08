@@ -23,7 +23,7 @@ Boot-task output currently stops after the init_featureflags exec checkpoint.
 That checkpoint is before exec completion; the runtime blocker is still under
 investigation. Patch 0092 adds bounded writer heartbeats, sampler wait/iteration
 boundaries, and an option to skip user stack reads. Native compilation passed in
-CI run 42476926270; artifact acceptance and a new hardware check are pending.
+CI run 42476926270 and artifact checks passed; a new hardware check is pending.
 Input and USB were disabled in these
 root diagnostics; SpringBoard has not been observed on cas.
 

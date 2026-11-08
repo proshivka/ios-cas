@@ -1,3 +1,42 @@
+### 2026-11-08 — r14: progress kernel/image accepted; temporary boot command copied
+
+The user downloaded and verified both archives from run 42476926270,
+attempt 1, source 1fcee5855fac91d4b7093e04c86481402b940688. The compiled
+0092 kernel SHA256 is
+a8b55612514ef85ea41fedf46148a2dc5e01ac0aae4050e050390d4e60d6d7ac;
+UUID 1C70D170-8612-36B9-8C0C-781FB97B6B47. All three compiled TUs match
+the checked inputs and 15 diagnostic markers are in loaded native segments.
+
+Prepared C:/ports/r14-rootmount/boot-progress-42476926270/boot.img,
+17772544 bytes, SHA256
+90a69d015ae84704855527eb7657799a4ac0558d6b1f41fd0a871401cec7d77b,
+marker sweetlogid=922bea967f8b478f. Local readback independently compares
+all ten packed segments with the downloaded kernel and preserves the
+accepted shim/DTB/ADT and RAM mapping. The profile keeps timer INTID 27,
+sampler timing 1/5, ufslogheartbeat=5 sweetsampletrace=1 sweetsamplestack=0.
+Evidence: progress-fixtures/boot-ready.json, image-readback-check.json and
+ci-42476926270-attempt-1/kernel-accepted.json. Hardware result is pending.
+
+progress-fixtures/progress_device.py is derived from the reviewed sample1s
+helper, pins the new source/image/marker, and uses the same known-CAS
+temporary boot and read-only recovery path. It verifies the image/rootfs
+receipt and CAS product before fastboot boot. Recovery validates the exact
+userdata size and reads the same last 4198400-byte log area. Its summary now
+includes writer heartbeats, sampler iteration/callback/interval boundaries,
+disabled user-frame reads and write failures. Fresh/stale capture handling,
+raw retention and the reviewed decoder are preserved. Target/log negative
+fixtures, local pin checks and both PowerShell command parses passed.
+Helper SHA256
+5260bf0ad5bf0e4dab64d15bb1178e020ca518c5562c81a70c943fca49f5c83a.
+
+The temporary boot command is copied with exact readback; receipt is
+progress-fixtures/boot-clipboard.json. No device command was executed here.
+Next: user enters fastboot and runs the command, waits at least 150 seconds,
+then returns to installed TWRP for progress-fixtures/collect-command.txt.
+Inspect manual-boot-r14-progress.json and fresh sweetlog-progress-*.bin/.txt/
+.json, verify the image marker and identify the last sampler boundaries and
+writer heartbeat. Photographing the current console is not required.
+
 ### 2026-11-08 — r14: progress diagnostics compiled; artifact/image preparation copied
 
 Run 42476926270, attempt 1, completed successfully for exact source
