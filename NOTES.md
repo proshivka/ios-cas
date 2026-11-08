@@ -1,3 +1,61 @@
+### 2026-11-08 — r14: autonomous device/build operation; pstore diagnostics checked
+
+The user enabled unrestricted execution, verified native adb devices, and
+explicitly authorized all CLI/build/device-test commands to be run here.
+The selected known CAS is in root TWRP 3.7.1_12-Waddah. Native adb now works;
+the previous sandbox-specific android-directory failure is historical.
+Keep temporary fastboot boot testing and existing partition protections.
+
+Correction to earlier triage: the active idleoff profile omits ufswait and
+ufscache. sweet_ufs_init initializes both to 0, so late SCSI polls use YIELD,
+not sleeping timed waits. Missing durable sampler/heartbeat output still
+does not establish a CPU/timer fault, but an active UFS-sleep explanation is
+unsupported for this profile.
+
+Read-only recovery probes found ramoops RAM at 0xb0000000, size 4 MiB,
+console 2 MiB, pmsg 2 MiB, ECC0, no record/ftrace zones. pmsg lives at
+0xb0200000..0xb0400000. Linux v4.19 reference layout/hashes are retained in
+C:/ports/r14-rootmount/pstore-fixtures/reference; the RAM header is DBGC
+signature 0x43474244, next position, used size, then 2097140 payload bytes.
+
+Patch 0093 adds an opt-in sweetpstore=1 /sweet-pstore diagnostic path. It
+retains the exact low 4 MiB during arm_vm_prot_finalize's low-gap release,
+before BSD initialization; all payload virtual/physical bases and loaded
+segment addresses stay unchanged. Exact bootarg/base/gap/property checks
+gate the reservation, and a confirmed getter gates access. RAM writes use
+the existing WB physical aperture with bounded local DC CVAC/DSB PoC cleans,
+avoiding conflicting cache aliases. Console mirroring and late UFS/writer/
+timer notes use RAM directly, with no UFS request or sleeping lock. Each
+masked copy is bounded at 384 bytes; masked large callbacks are truncated
+and counted, contended try-lock chunks are dropped rather than waited for.
+Payload is cleaned before size/start header publication. Normal and critical
+timer/timeout/poll evidence have separate budgets; iteration milestones at
+4096/1048576 can reveal a live poll with a stalled counter.
+
+The actual C writer/reservation fixture passed Linux reconstruction, wrap,
+oversized writes, IRQ-state/bound, nonblocking-drop, disabled-path and layout
+negative cases. Patch apply/reverse and source equality passed. All three
+changed TUs compile as native arm64 Mach-O with local Ubuntu clang21 using
+the accepted run42476926270 buildtree/flags (Apple-only type builtins shimmed).
+This is a local compile check, not CI or hardware acceptance.
+Patch SHA256 f49acc9a632291ba6b1076801786c3163252efc035ca2d527baf84737d34a7cc.
+Fixtures/check receipts: C:/ports/r14-rootmount/pstore-fixtures.
+
+The staged patch is LF and matches the host/compile fixture's exact bytes.
+Strict index apply/reverse and whitespace checks on the resulting C diff
+passed; unified-diff context whitespace is kept intact. The handoff was
+normalized to LF without changing its text. Receipt: staged-source-check.json.
+Native ADB confirms the saved CAS target in root recovery; GitHub account
+query confirms proshivka.
+
+Branch: proshivka/r14-pstore-diag-20261108. Next: publish/build the exact
+checked commit once as proshivka, verify archives,
+compiled sources and new loaded markers, add the gated node to the accepted
+ADT without changing mappings, then temporary-boot and collect both pmsg
+and UFS logs. No new diagnostic image is booted yet. Recovery retention is
+hardware-pending; do not call persistent logging fixed before a fresh marker
+is recovered from pmsg.
+
 ### 2026-11-08 — r14: idleoff recovery log collected directly and verified
 
 The user returned to TWRP after the accepted idleoff temporary boot:

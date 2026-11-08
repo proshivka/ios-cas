@@ -1,0 +1,393 @@
+--- a/bsd/dev/sweet_ufs.c
++++ b/bsd/dev/sweet_ufs.c
+@@ -73,6 +73,193 @@
+ #define SWEET_MARK_LOG_START    5       /* log flush thread is running */
+ #define SWEET_MARK_ROOTDEV      6       /* sweet_ufs_rootdev() reached */
+ 
++/* Optional CAS pmsg mirror: volatile reserved RAM, no UFS or sleeping lock. */
++#define SWEET_PSTORE_PA       0xb0200000ULL
++#define SWEET_PSTORE_BYTES    0x200000u
++#define SWEET_PSTORE_RESERVED 0x400000u
++#define SWEET_PSTORE_SIG      0x43474244u /* Linux persistent_ram, sig argument 0. */
++#define SWEET_PSTORE_CAPACITY (SWEET_PSTORE_BYTES - 12u)
++#define SWEET_PSTORE_NOTES    256u
++#define SWEET_PSTORE_CRITICAL_NOTES 192u
++#define SWEET_PSTORE_CHUNK    384u
++
++struct sweet_pstore_header {
++	uint32_t signature, start, size;
++};
++_Static_assert(sizeof(struct sweet_pstore_header) == 12, "persistent_ram header");
++
++static volatile struct sweet_pstore_header *sweet_pstore_header;
++static volatile uint8_t *sweet_pstore_data;
++static uint32_t _Atomic sweet_pstore_state, sweet_pstore_busy;
++static uint32_t _Atomic sweet_pstore_late, sweet_pstore_notes, sweet_pstore_irqs;
++static uint32_t _Atomic sweet_pstore_critical_notes;
++static uint32_t sweet_pstore_at, sweet_pstore_used;
++static uint32_t _Atomic sweet_pstore_dropped;
++
++extern vm_size_t sweet_pstore_reserved_bytes(void);
++extern vm_offset_t sweet_pstore_address(void);
++extern uint64_t sweet_pstore_rtc_pop(void);
++void sweet_pstore_note(const char *, uint64_t, uint64_t);
++bool sweet_pstore_irq_sample(void);
++
++static void
++sweet_pstore_append_chunk(const char *text, uint32_t count)
++{
++	if (!count || os_atomic_load(&sweet_pstore_state, acquire) != 2) {
++		return;
++	}
++	boolean_t irq = ml_set_interrupts_enabled(FALSE);
++	if (!os_atomic_cmpxchg(&sweet_pstore_busy, 0, 1, acquire)) {
++		os_atomic_inc(&sweet_pstore_dropped, relaxed);
++		ml_set_interrupts_enabled(irq);
++		return; /* Never wait from an interrupt or a console callback. */
++	}
++	uint32_t start = sweet_pstore_at;
++	for (uint32_t i = 0; i < count; i++) {
++		sweet_pstore_data[sweet_pstore_at] = (uint8_t)text[i];
++		if (++sweet_pstore_at == SWEET_PSTORE_CAPACITY) {
++			sweet_pstore_at = 0;
++		}
++	}
++	sweet_pstore_used = MIN(SWEET_PSTORE_CAPACITY, sweet_pstore_used + count);
++	uint32_t first = MIN(count, SWEET_PSTORE_CAPACITY - start);
++	clean_dcache64((addr64_t)(SWEET_PSTORE_PA + 12 + start), first, TRUE);
++	if (count > first) {
++		clean_dcache64((addr64_t)(SWEET_PSTORE_PA + 12), count - first, TRUE);
++	}
++	__builtin_arm_dsb(0xf);
++	sweet_pstore_header->size = sweet_pstore_used;
++	sweet_pstore_header->start = sweet_pstore_at;
++	clean_dcache64((addr64_t)SWEET_PSTORE_PA, sizeof(*sweet_pstore_header), TRUE);
++	__builtin_arm_dsb(0xf);
++	os_atomic_store(&sweet_pstore_busy, 0, release);
++	ml_set_interrupts_enabled(irq);
++}
++
++static void
++sweet_pstore_append(const char *text, uint32_t count)
++{
++	if (!count || os_atomic_load(&sweet_pstore_state, acquire) != 2) {
++		return;
++	}
++	if (count > SWEET_PSTORE_CAPACITY) {
++		text += count - SWEET_PSTORE_CAPACITY;
++		count = SWEET_PSTORE_CAPACITY;
++	}
++	/* An already masked caller gets one bounded chunk; normal callers restore
++	 * their interrupt state between chunks rather than masking a 2 MiB copy. */
++	if (!ml_get_interrupts_enabled() && count > SWEET_PSTORE_CHUNK) {
++		count = SWEET_PSTORE_CHUNK;
++		os_atomic_inc(&sweet_pstore_dropped, relaxed);
++	}
++	while (count) {
++		uint32_t chunk = MIN(count, SWEET_PSTORE_CHUNK);
++		sweet_pstore_append_chunk(text, chunk);
++		text += chunk;
++		count -= chunk;
++	}
++}
++
++static void
++sweet_pstore_init(void)
++{
++	DTEntry entry;
++	uintptr_t const *reg = NULL;
++	unsigned int size = 0;
++	uint32_t on = 0;
++	PE_parse_boot_argn("sweetpstore", &on, sizeof(on));
++	if (on != 1 || sweet_pstore_reserved_bytes() != SWEET_PSTORE_RESERVED ||
++	    SecureDTLookupEntry(NULL, "/sweet-pstore", &entry) != kSuccess ||
++	    SecureDTGetProperty(entry, "reg", (void const **)&reg, &size) != kSuccess ||
++	    size != 2 * sizeof(*reg) || reg[0] != SWEET_PSTORE_PA ||
++	    reg[1] != SWEET_PSTORE_BYTES ||
++	    !os_atomic_cmpxchg(&sweet_pstore_state, 0, 1, acquire)) {
++		return;
++	}
++	/* Use the existing WB aperture; avoid a conflicting IO-map cache alias. */
++	vm_offset_t mapped = sweet_pstore_address();
++	if (!mapped) {
++		os_atomic_store(&sweet_pstore_state, 0, release);
++		return;
++	}
++	sweet_pstore_header = (volatile struct sweet_pstore_header *)mapped;
++	sweet_pstore_data = (volatile uint8_t *)(mapped + sizeof(*sweet_pstore_header));
++	sweet_pstore_header->signature = 0;
++	sweet_pstore_header->start = 0;
++	sweet_pstore_header->size = 0;
++	clean_dcache64((addr64_t)SWEET_PSTORE_PA, sizeof(*sweet_pstore_header), TRUE);
++	__builtin_arm_dsb(0xf);
++	sweet_pstore_header->signature = SWEET_PSTORE_SIG;
++	clean_dcache64((addr64_t)SWEET_PSTORE_PA, sizeof(*sweet_pstore_header), TRUE);
++	__builtin_arm_dsb(0xf);
++	os_atomic_store(&sweet_pstore_state, 2, release);
++	static const char banner[] = "SWEET PSTORE: Linux pmsg RAM mirror v1, UFS-independent\n";
++	sweet_pstore_append(banner, sizeof(banner) - 1);
++}
++
++void
++sweet_pstore_note(const char *event, uint64_t a, uint64_t b)
++{
++	if (os_atomic_load(&sweet_pstore_state, acquire) != 2 ||
++	    !os_atomic_load(&sweet_pstore_late, relaxed)) {
++		return;
++	}
++	bool critical = !strcmp(event, "timer-in") || !strcmp(event, "timer-out") ||
++	    !strcmp(event, "poll-spin") || !strcmp(event, "timeout");
++	uint32_t _Atomic *budget = critical ? &sweet_pstore_critical_notes : &sweet_pstore_notes;
++	uint32_t limit = critical ? SWEET_PSTORE_CRITICAL_NOTES : SWEET_PSTORE_NOTES;
++	if (os_atomic_load(budget, relaxed) >= limit || os_atomic_inc_orig(budget, relaxed) >= limit) {
++		return;
++	}
++	uint64_t vct, ctl, tval, cval, daif;
++	__asm__ volatile("mrs %0, cntvct_el0" : "=r"(vct));
++	__asm__ volatile("mrs %0, cntv_ctl_el0" : "=r"(ctl));
++	__asm__ volatile("mrs %0, cntv_tval_el0" : "=r"(tval));
++	__asm__ volatile("mrs %0, cntv_cval_el0" : "=r"(cval));
++	__asm__ volatile("mrs %0, daif" : "=r"(daif));
++	char line[384];
++	int count = snprintf(line, sizeof(line),
++	    "PST %s a 0x%llx b 0x%llx clock %llu vct %llu ctl 0x%llx tval %d cval %llu daif 0x%llx pop %llu drop %u\n",
++	    event, (unsigned long long)a, (unsigned long long)b,
++	    (unsigned long long)mach_absolute_time(), (unsigned long long)vct,
++	    (unsigned long long)ctl, (int32_t)tval, (unsigned long long)cval,
++	    (unsigned long long)daif, (unsigned long long)sweet_pstore_rtc_pop(),
++	    os_atomic_load(&sweet_pstore_dropped, relaxed));
++	if (count > 0) {
++		sweet_pstore_append(line, (uint32_t)MIN(count, (int)sizeof(line) - 1));
++	}
++}
++
++static bool
++sweet_pstore_poll_enabled(void)
++{
++	return os_atomic_load(&sweet_pstore_state, acquire) == 2 &&
++	       os_atomic_load(&sweet_pstore_late, relaxed) != 0;
++}
++
++bool
++sweet_pstore_irq_sample(void)
++{
++	if (os_atomic_load(&sweet_pstore_state, acquire) != 2 ||
++	    !os_atomic_load(&sweet_pstore_late, relaxed) ||
++	    os_atomic_load(&sweet_pstore_irqs, relaxed) >= 4096) {
++		return false;
++	}
++	uint32_t irq = os_atomic_inc_orig(&sweet_pstore_irqs, relaxed) + 1;
++	return irq <= 8 || (irq <= 4096 && irq % 64 == 0);
++}
++
++static void
++sweet_pstore_exec(const char *name)
++{
++	if (name != NULL && os_atomic_load(&sweet_pstore_state, acquire) == 2 &&
++	    (!strcmp(name, "dirs_cleaner") || !strcmp(name, "xpcroleaccountd") ||
++	    !strcmp(name, "init_featureflags"))) {
++		os_atomic_store(&sweet_pstore_late, 1, release);
++		sweet_pstore_note(name, 0, 0);
++	}
++}
++
+ #define REG_CAP         0x00
+ #define REG_IS          0x20
+ #define REG_IE          0x24
+@@ -170,6 +357,9 @@
+ 	struct utrd *utrd = (struct utrd *)(su.dma + DMA_UTRL);
+ 	struct ucd *ucd = (struct ucd *)(su.dma + DMA_UCD);
+ 	uint64_t ucd_pa = su.dma_pa + DMA_UCD, bounce_pa = su.dma_pa + DMA_BOUNCE;
++	sweet_pstore_note("scsi-in", cdb[0], len);
++	bool pstore_poll_on = sweet_pstore_poll_enabled();
++	uint32_t pstore_polls = 0;
+ 	bool boot_diag = !su.ready;
+ 	unsigned int diag_polls = 0;
+ 
+@@ -236,6 +426,7 @@
+ 	__builtin_arm_dsb(0xf);
+ 
+ 	ufs_wr(REG_UTRLDBR, 1);
++	sweet_pstore_note("submitted", cdb[0], ufs_rd(REG_UTRLDBR));
+ 	if (boot_diag) {
+ 		printf("SWEETU 03 submit-done clock-in\n");
+ 	}
+@@ -258,14 +449,21 @@
+ 	if (boot_diag) {
+ 		printf("SWEETU 05 poll-in db 0x%x\n", ufs_rd(REG_UTRLDBR));
+ 	}
++	sweet_pstore_note("poll-in", cdb[0], ufs_rd(REG_UTRLDBR));
+ 	while (ufs_rd(REG_UTRLDBR) & 1) {
+ 		uint64_t now = mach_absolute_time();
++		if (pstore_poll_on && pstore_polls < 1048576 &&
++		    (++pstore_polls == 4096 || pstore_polls == 1048576)) {
++			sweet_pstore_note("poll-spin", cdb[0],
++			    ((uint64_t)pstore_polls << 32) | ufs_rd(REG_UTRLDBR));
++		}
+ 		/* One iteration-based sample also runs when the counter is stalled. */
+ 		if (boot_diag && diag_polls < 4096 && ++diag_polls == 4096) {
+ 			printf("SWEETU 06 poll-heartbeat dt %llu db 0x%x\n",
+ 			    (unsigned long long)(now - started), ufs_rd(REG_UTRLDBR));
+ 		}
+ 		if (now > deadline) {
++			sweet_pstore_note("timeout", cdb[0], ufs_rd(REG_UTRLDBR));
+ 			ufs_wr(REG_UTRLCLR, ~1u);
+ 			printf("SWEET UFS: command 0x%02x timed out\n", cdb[0]);
+ 			return ETIMEDOUT;
+@@ -283,6 +481,7 @@
+ 			__builtin_arm_yield();
+ 		}
+ 	}
++	sweet_pstore_note("poll-out", cdb[0], ufs_rd(REG_UTRLDBR));
+ 	__builtin_arm_dsb(0xf);
+ 	ufs_wr(REG_IS, ufs_rd(REG_IS));         /* acknowledge completion status */
+ 	if (boot_diag) {
+@@ -302,6 +501,7 @@
+ 	if (boot_diag) {
+ 		printf("SWEETU 08 invalidate-done\n");
+ 	}
++	sweet_pstore_note("cache-out", cdb[0], utrd->dw2 & 0xff);
+ 	uint32_t ocs = utrd->dw2 & 0xff;
+ 	if (ocs || ucd->resp[0] != 0x21 || ucd->resp[6] || ucd->resp[7]) {
+ 		printf("SWEET UFS: command 0x%02x failed: ocs 0x%x upiu 0x%x response 0x%x status 0x%x\n",
+@@ -800,6 +1000,7 @@
+ void
+ sweet_log_exec_note(const char *name)
+ {
++	sweet_pstore_exec(name);
+ 	if (!sweet_log_exec_on || !su.ready || !su.writable || name == NULL ||
+ 	    (strcmp(name, "dirs_cleaner") != 0 &&
+ 	    strcmp(name, "xpcroleaccountd") != 0 &&
+@@ -816,6 +1017,7 @@
+ static void
+ sweet_log_phase(uint32_t cycle, const char *phase, uint64_t seq, int status)
+ {
++	sweet_pstore_note(phase, ((uint64_t)cycle << 32) | (uint32_t)status, seq);
+ 	if (sweet_log_trace_on && cycle <= SWEET_LOG_TRACE_CYCLES) {
+ 		printf("SWEET LOG: phase %s cycle %u seq %llu status %d clock %llu irq %d preempt %d\n",
+ 		    phase, cycle, (unsigned long long)seq, status,
+@@ -867,6 +1069,9 @@
+ void
+ sweet_log_append(const char *c, int size)
+ {
++	if (size > 0) {
++		sweet_pstore_append(c, (uint32_t)size);
++	}
+ 	if (size <= 0) {
+ 		return;
+ 	}
+@@ -984,6 +1189,7 @@
+ static void
+ sweet_log_start(void)
+ {
++	sweet_pstore_init();
+ 	uint32_t on = 1;
+ 	thread_t thread;
+ 
+--- a/osfmk/arm64/sleh.c
++++ b/osfmk/arm64/sleh.c
+@@ -1847,6 +1847,18 @@
+ 	__builtin_unreachable();
+ }
+ 
++#if defined(SWEET)
++extern void sweet_pstore_note(const char *, uint64_t, uint64_t);
++extern bool sweet_pstore_irq_sample(void);
++uint64_t sweet_pstore_rtc_pop(void);
++
++uint64_t
++sweet_pstore_rtc_pop(void)
++{
++	return getCpuDatap()->rtcPop;
++}
++#endif
++
+ void
+ sleh_irq(arm_saved_state_t *state)
+ {
+@@ -1868,12 +1880,19 @@
+ 		return; /* spurious */
+ 	}
+ 	if (intid == sweet_vtimer_intid) {
++		bool pstore_sample = sweet_pstore_irq_sample();
++		if (pstore_sample) {
++			sweet_pstore_note("timer-in", intid, cdp->rtcPop);
++		}
+ 		sleh_interrupt_handler_prologue(state, DBG_INTR_TYPE_TIMER);
+ 		cdp->cpu_decrementer = -1; /* Large */
+ 		INTERRUPT_MASKED_DEBUG_START(rtclock_intr, DBG_INTR_TYPE_TIMER);
+ 		rtclock_intr(TRUE);
+ 		INTERRUPT_MASKED_DEBUG_END();
+ 		__builtin_arm_wsr64("ICC_EOIR1_EL1", iar);
++		if (pstore_sample) {
++			sweet_pstore_note("timer-out", intid, cdp->rtcPop);
++		}
+ 	} else if (intid < 16) {
+ 		sleh_interrupt_handler_prologue(state, DBG_INTR_TYPE_IPI);
+ 		/* Ack before handling so an IPI raised meanwhile is not lost */
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -46,6 +46,7 @@
+ #include <arm/misc_protos.h>
+ #include <pexpert/arm64/boot.h>
+ #include <pexpert/device_tree.h>
++#include <pexpert/pexpert.h>
+ 
+ #include <libkern/kernel_mach_header.h>
+ #include <libkern/section_keywords.h>
+@@ -1614,6 +1615,42 @@
+ 
+ #endif // XNU_MONITOR
+ 
++#if defined(ARM64_BOARD_CONFIG_SWEET)
++/* Keep the exact recovery pstore prefix wired; boot mapping stays unchanged. */
++static SECURITY_READ_ONLY_LATE(vm_size_t) sweet_pstore_reserved_low;
++vm_size_t sweet_pstore_reserved_bytes(void);
++vm_offset_t sweet_pstore_address(void);
++
++vm_size_t
++sweet_pstore_reserved_bytes(void)
++{
++	return sweet_pstore_reserved_low;
++}
++
++vm_offset_t
++sweet_pstore_address(void)
++{
++	return sweet_pstore_reserved_low == 0x400000ULL ? phystokv(0xb0200000ULL) : 0;
++}
++
++static vm_size_t
++sweet_pstore_reserve_low(vm_size_t low_size)
++{
++	DTEntry entry;
++	uintptr_t const *reg = NULL;
++	unsigned int size = 0;
++	uint32_t on = 0;
++	PE_parse_boot_argn("sweetpstore", &on, sizeof(on));
++	if (on == 1 && gPhysBase == 0xb0000000ULL && low_size >= 0x400000ULL &&
++	    SecureDTLookupEntry(NULL, "/sweet-pstore", &entry) == kSuccess &&
++	    SecureDTGetProperty(entry, "reg", (void const **)&reg, &size) == kSuccess &&
++	    size == 2 * sizeof(*reg) && reg[0] == 0xb0200000ULL && reg[1] == 0x200000ULL) {
++		sweet_pstore_reserved_low = 0x400000ULL;
++	}
++	return sweet_pstore_reserved_low;
++}
++#endif
++
+ void
+ arm_vm_prot_finalize(boot_args * args __unused)
+ {
+@@ -1633,7 +1670,11 @@
+ 	 * should be immediately followed by XNU's TEXT segment
+ 	 */
+ 
+-	ml_static_mfree(phystokv(gPhysBase), segLOWEST - gVirtBase);
++	vm_size_t low_reserved = 0;
++#if defined(ARM64_BOARD_CONFIG_SWEET)
++	low_reserved = sweet_pstore_reserve_low(segLOWEST - gVirtBase);
++#endif
++	ml_static_mfree(phystokv(gPhysBase + low_reserved), segLOWEST - gVirtBase - low_reserved);
+ 
+ 	/*
+ 	 * KTRR support means we will be mucking with these pages and trying to
