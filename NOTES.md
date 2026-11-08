@@ -1,3 +1,21 @@
+### 2026-11-08 — r14: progress boot accepted; recovery collection command copied
+
+manual-boot-r14-progress.json records bootloader acceptance at
+2026-11-08T12:07:15.194472Z for run 42476926270, source
+1fcee5855fac91d4b7093e04c86481402b940688, image SHA256
+90a69d015ae84704855527eb7657799a4ac0558d6b1f41fd0a871401cec7d77b,
+marker sweetlogid=922bea967f8b478f. The user has returned to TWRP. This
+receipt confirms transfer/boot acceptance; fresh runtime evidence is pending.
+
+The matching progress-fixtures/collect-command.txt is copied with exact
+readback and PowerShell parsing verified; receipt is collect-clipboard.json.
+The unchanged helper SHA256 is
+5260bf0ad5bf0e4dab64d15bb1178e020ca518c5562c81a70c943fca49f5c83a.
+No device command was executed locally. Next: user runs the recovery reader;
+inspect fresh sweetlog-progress-*.bin/.txt/.json directly, validate the
+922bea967f8b478f image marker and trace the last sampler/writer progress.
+Photographs and OCR are not needed for this collection.
+
 ### 2026-11-08 — r14: progress kernel/image accepted; temporary boot command copied
 
 The user downloaded and verified both archives from run 42476926270,
