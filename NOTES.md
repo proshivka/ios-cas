@@ -1,3 +1,49 @@
+### 2026-11-08 — r14: post-exec IRQ/thread diagnostics checked; native build pending
+
+Latest user clarification: the previous 0093 boot was manually restarted
+after approximately two minutes. Its return to TWRP was not an automatic
+reboot. RAM recovery collection was automatic and verified. Native adb now
+again finds the known CAS in recovery; all build/CLI/device commands remain
+explicitly authorized here.
+
+New optional patch0094 (sweetpostexec=1) is based on the accepted0093 C from
+source adf1612f380f2e08bcd13689647f9767c59a7f4a / run42489183935. It arms at
+the full init_featureflags exec name, records scalar interrupted PC/LR/SP/
+CPSR/tid and timer/writer wait state, captures the first128 consecutive IRQs
+then every64 through4096, and preserves each complete record within383 bytes.
+IRQ handling/acknowledgement/EOI ordering is unchanged. The proven384-byte
+nonblocking RAM writer and low-RAM reservation are retained byte-for-byte.
+Writer and sampler controls have an independent384-note budget; page-in
+SCSI notes cannot consume it. Writer deadline/result/stage publication masks
+only three scalar stores, restoring the caller's IRQ state before logging.
+
+The existing sampler gets an exec wake with sticky registration-before-
+consumption semantics. It snapshots PID1 first, filters other named targets
+using p_comm (init_featureflag is the16-character selector), retains process
+transition protection, and copies scheduler wait scalars under thread_lock.
+Printing follows thread_unlock/splx. User-stack page reads are disabled for
+this profile. Direct p_comm copying reduces redundant lookups; it is not a
+confirmed process-reference deadlock fix.
+
+Separate fixtures: C:/ports/r14-rootmount/postexec-fixtures. Strict patch
+apply/reverse/source equality passed. The actual C executed190 paired IRQ
+records with worst-case values, independent budgets, exact trigger and
+nonblocking-drop cases; sampler wakes before registration, between register/
+exchange, and between exchange/block all passed. All four changed TUs
+compiled as ARM64 Mach-O against the accepted build's local compile flags.
+The accepted0093 donor reproduces exactly; existing ADT/container components
+are retained and the new command line is554 bytes. Older kernels and invalid
+ADT/argument cases are rejected. These are local checks, not native CI or
+hardware acceptance. Patch SHA256:
+b1d36614f932651ab949832c5234f82975206548a79cd94bdc4b1e76bd963d6b.
+
+Next: commit/publish this checked source as proshivka, dispatch one xnu run,
+verify its artifacts/compiled C/native hooks, assemble a fresh marked
+temporary image, boot the selected CAS and collect its RAM/UFS logs on its
+return to TWRP. Preserve the accepted0093 evidence. A final unmatched IRQ
+entry is retained as evidence; absence of an exit alone proves no root cause.
+No0094 CI dispatch or phone boot has occurred yet.
+
 ### 2026-11-08 — r14: automatic CAS log collection and RAM persistence verified
 
 The pending 0093 build/acceptance/temporary-boot/recovery test is complete.
