@@ -42,7 +42,15 @@ verify its artifacts/compiled C/native hooks, assemble a fresh marked
 temporary image, boot the selected CAS and collect its RAM/UFS logs on its
 return to TWRP. Preserve the accepted0093 evidence. A final unmatched IRQ
 entry is retained as evidence; absence of an exit alone proves no root cause.
-No0094 CI dispatch or phone boot has occurred yet.
+Implementation/source commit3ec7c7391a577a74828b1cb79f163d680ab906b3 was
+published as proshivka on proshivka/r14-postexec-state-20261108. Exactly one
+xnu run42493724268 was dispatched and is in progress:
+https://github.com/proshivka/ios-cas/actions/runs/42493724268.
+The account query confirmed proshivka before remote writes. Final independent
+review found no unresolved correctness blockers; source-review.json retains
+the verdict. Helpers are pinned independently of subsequent handoff commits.
+Native/artifact acceptance and the0094 phone test are pending. No0094 phone
+boot has occurred yet.
 
 ### 2026-11-08 — r14: automatic CAS log collection and RAM persistence verified
 
