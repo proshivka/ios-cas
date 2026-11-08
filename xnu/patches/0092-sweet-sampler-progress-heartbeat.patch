@@ -1,0 +1,189 @@
+--- a/bsd/dev/sweet_ufs.c
++++ b/bsd/dev/sweet_ufs.c
+@@ -766,24 +766,28 @@
+ #define SWEET_LOG_SIZE          (4u << 20)
+ #define SWEET_LOG_BLOCKS        (1 + SWEET_LOG_SIZE / UFS_BLOCK)
+ #define SWEET_LOG_SECS          10u
+-#define SWEET_LOG_TRACE_CYCLES  8u
++#define SWEET_LOG_TRACE_CYCLES  32u
++#define SWEET_LOG_HEARTBEATS    32u
+ 
+ static char sweet_log_ring[SWEET_LOG_SIZE];
+ static uint64_t _Atomic sweet_log_total;
+ static int sweet_log_chan;
+ static uint32_t sweet_log_secs = SWEET_LOG_SECS;
+ static uint32_t sweet_log_exec_on, sweet_log_trace_on;
++static uint32_t sweet_log_heartbeat_secs;
+ static uint32_t _Atomic sweet_log_pending;
+ 
+ static void
+ sweet_log_configure(void)
+ {
+-	uint32_t exec = 0, trace = 0;
++	uint32_t exec = 0, trace = 0, heartbeat = 0;
+ 
+ 	PE_parse_boot_argn("ufslogexec", &exec, sizeof(exec));
+ 	PE_parse_boot_argn("ufslogtrace", &trace, sizeof(trace));
++	PE_parse_boot_argn("ufslogheartbeat", &heartbeat, sizeof(heartbeat));
+ 	sweet_log_exec_on = (exec == 1);
+ 	sweet_log_trace_on = (trace == 1);
++	sweet_log_heartbeat_secs = heartbeat <= 60 ? heartbeat : 0;
+ 	if (sweet_log_exec_on) {
+ 		/* First snapshot must not depend on a timer wakeup. */
+ 		os_atomic_store(&sweet_log_pending, 1, release);
+@@ -841,6 +845,22 @@
+ 	return result == THREAD_WAITING ? thread_block(THREAD_CONTINUE_NULL) : result;
+ }
+ 
++/* Runs only in the existing writer, before the unchanged-console fast path. */
++static void
++sweet_log_heartbeat(uint64_t *deadline, uint32_t *count)
++{
++	if (!sweet_log_heartbeat_secs || *count >= SWEET_LOG_HEARTBEATS) {
++		return;
++	}
++	uint64_t now = mach_absolute_time();
++	if (now < *deadline) {
++		return;
++	}
++	printf("SWEET LOG: heartbeat %u clock %llu irq %d preempt %d\n", ++*count,
++	    (unsigned long long)now, ml_get_interrupts_enabled(), get_preemption_level());
++	clock_interval_to_deadline(sweet_log_heartbeat_secs, NSEC_PER_SEC, deadline);
++}
++
+ /* Called for all console output, any context: never blocks. */
+ void sweet_log_append(const char *c, int size);
+ 
+@@ -898,6 +918,8 @@
+ 	uint64_t base = su.first_block + su.nblocks - SWEET_LOG_BLOCKS;
+ 	uint64_t flushed = 0, seq = 0;
+ 	uint32_t cycles = 0;
++	uint64_t heartbeat_deadline = 0;
++	uint32_t heartbeats = 0;
+ 	void *bounce = (void *)(su.dma + DMA_BOUNCE);
+ 
+ 	printf("SWEET LOG: console log to the last %u KiB of the partition (block 0x%llx)\n",
+@@ -907,6 +929,7 @@
+ 		sweet_log_phase(cycle, "wait-in", seq, 0);
+ 		int wait_status = sweet_log_wait();
+ 		sweet_log_phase(cycle, "wait-ret", seq, wait_status);
++		sweet_log_heartbeat(&heartbeat_deadline, &heartbeats);
+ 		uint64_t total = os_atomic_load(&sweet_log_total, relaxed);
+ 		if (total == flushed) {
+ 			continue;
+--- a/bsd/dev/sweet_sample.c
++++ b/bsd/dev/sweet_sample.c
+@@ -12,6 +12,8 @@
+  *
+  * First sample 90 s after start, then every 120 s, 40 samples at most.
+  * sweetsamplefirst=1..90 and sweetsampleinterval=1..120 override these waits.
++ * sweetsampletrace=1 records wait and iteration boundaries.
++ * sweetsamplestack=0 keeps PC/LR/SP without reading user stack pages.
+  * Sampling itself may block on process transitions or user-page faults.
+  */
+ #include <sys/param.h>
+@@ -20,6 +22,7 @@
+ #include <sys/proc_internal.h>
+ #include <kern/task.h>
+ #include <kern/thread.h>
++#include <mach/mach_time.h>
+ #include <pexpert/pexpert.h>
+ 
+ extern task_t proc_task(proc_t);
+@@ -27,6 +30,16 @@
+ extern void sweet_sample_start(void);
+ 
+ static char sweet_sample_names[128];
++static uint32_t sweet_sample_trace_on;
++
++static void
++sweet_sample_phase(const char *phase, int sample, int status)
++{
++	if (sweet_sample_trace_on) {
++		printf("SMP --- phase %s sample %d status %d clock %llu\n",
++		    phase, sample, status, (unsigned long long)mach_absolute_time());
++	}
++}
+ 
+ static bool
+ sweet_sample_wanted(const char *name)
+@@ -54,9 +67,17 @@
+ 	char name[32];
+ 	proc_name(proc_pid(p), name, sizeof(name));
+ 	if (sweet_sample_wanted(name)) {
++		if (sweet_sample_trace_on) {
++			printf("SMP --- callback-in %s[%d] clock %llu\n", name, proc_pid(p),
++			    (unsigned long long)mach_absolute_time());
++		}
+ 		task_t task = proc_task(p);
+ 		if (task != TASK_NULL) {
+ 			sweet_sample_task(name, proc_pid(p), task);
++		}
++		if (sweet_sample_trace_on) {
++			printf("SMP --- callback-out %s[%d] clock %llu\n", name, proc_pid(p),
++			    (unsigned long long)mach_absolute_time());
+ 		}
+ 	}
+ 	return PROC_RETURNED;
+@@ -72,6 +93,9 @@
+ 	if (sweet_sample_names[0] == '-') {
+ 		return;
+ 	}
++	uint32_t trace = 0;
++	PE_parse_boot_argn("sweetsampletrace", &trace, sizeof(trace));
++	sweet_sample_trace_on = (trace == 1);
+ 	uint32_t first = 90, interval = 120;
+ 	bool diagnostics = PE_parse_boot_argn("sweetsamplefirst", &first, sizeof(first));
+ 	diagnostics |= PE_parse_boot_argn("sweetsampleinterval", &interval, sizeof(interval));
+@@ -84,14 +108,20 @@
+ 	if (diagnostics) {
+ 		printf("SMP --- configured first %u interval %u\n", first, interval);
+ 	}
++	sweet_sample_phase("initial-wait-in", -1, 0);
+ 	int wait_status = tsleep(&chan, PZERO, "sweetsmp", (int)first * hz);
++	sweet_sample_phase("initial-wait-out", -1, wait_status);
+ 	if (diagnostics) {
+ 		printf("SMP --- initial wait returned %d\n", wait_status);
+ 	}
+ 	for (int i = 0; i < 40; i++) {
+ 		printf("SMP --- sample %d\n", i);
++		sweet_sample_phase("iterate-in", i, 0);
+ 		proc_iterate(PROC_ALLPROCLIST, sweet_sample_proc, NULL, NULL, NULL);
+-		(void)tsleep(&chan, PZERO, "sweetsmp", (int)interval * hz);
++		sweet_sample_phase("iterate-out", i, 0);
++		sweet_sample_phase("wait-in", i, 0);
++		wait_status = tsleep(&chan, PZERO, "sweetsmp", (int)interval * hz);
++		sweet_sample_phase("wait-out", i, wait_status);
+ 	}
+ }
+ 
+--- a/osfmk/kern/exception.c
++++ b/osfmk/kern/exception.c
+@@ -1000,6 +1000,8 @@
+ sweet_sample_task(const char *name, int pid, task_t task)
+ {
+ 	vm_map_t map = get_task_map(task);
++	uint32_t user_frames = 1;
++	PE_parse_boot_argn("sweetsamplestack", &user_frames, sizeof(user_frames));
+ 	uint64_t slide = 0;
+ 	int tn = 0;
+ 	thread_t thread;
+@@ -1010,6 +1012,9 @@
+ 		vm_shared_region_deallocate(sr);
+ 	}
+ 	printf("SMP %s[%d] slide 0x%llx mh 0x%llx\n", name, pid, slide, task->mach_header_vm_address);
++	if (!user_frames) {
++		printf("SMP --- user-frames disabled %s[%d]\n", name, pid);
++	}
+ 
+ 	task_lock(task);
+ 	queue_iterate(&task->threads, thread, thread_t, task_threads) {
+@@ -1024,7 +1029,7 @@
+ 		fp = get_saved_state_fp(ss);
+ 		n = snprintf(line, sizeof(line), "SMP %s t%d pc 0x%llx lr 0x%llx sp 0x%llx bt", name, tn++,
+ 		    get_saved_state_pc(ss), get_saved_state_lr(ss), get_saved_state_sp(ss));
+-		for (int i = 0; i < 16 && fp != 0 && (fp & 7) == 0 && n < (int)sizeof(line) - 20; i++) {
++		for (int i = 0; user_frames && i < 16 && fp != 0 && (fp & 7) == 0 && n < (int)sizeof(line) - 20; i++) {
+ 			uint64_t frame[2];
+ 			if (vm_map_read_user(map, fp, frame, sizeof(frame)) != KERN_SUCCESS) {
+ 				break;

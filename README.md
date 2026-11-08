@@ -1,29 +1,33 @@
-# ios-cas — iOS 16 on the Xiaomi Mi 10 Ultra (cas, SM8250)
+# ios-cas - iOS 16 on the Xiaomi Mi 10 Ultra (cas, SM8250)
 
 > Fork of [ios-sweet](https://github.com/dipa-studio/ios-sweet) for the **Xiaomi Mi 10 Ultra**
-> (`cas`, Qualcomm SM8250 / Snapdragon 865). **Status: bring-up, nothing boots yet.**
-> Everything below the line is the original ios-sweet README.
+> (`cas`, Qualcomm SM8250 / Snapdragon 865). **Status: bring-up. The HFSX root mounts,
+> Apple launchd and early boot helpers run, and console logs can be collected from TWRP.**
+> The iOS interface has not been observed on cas. The original ios-sweet README below
+> describes the upstream Redmi Note 10 Pro.
 
-## Where the cas port stands (2026-10-22)
+## Where the cas port stands (2026-11-08)
 
-Working on the phone, verified with photos of the panel:
+Verified on the phone with temporary boot images and persistent console files:
 
-- The **sweet shim boots on cas unchanged**: console on the ABL framebuffer at
-  `0x9C000000`, `mmu.c` page tables, live-FDT parse, GIC init.
-- The shim's **UFS probe reads the cas GPT**: `ver=0x00000300 cap=0x1587031F`,
-  partitions persist/persistbak/logdump/rawdump/minidump/recovery/cache/exaid/cust/
-  super/userdata(f2fs)/**esp**/**win**.
-- `tools/mkadt.py --cas` builds the cas ADT (1080x2340 panel, `xiaomi,cas|qcom,sm8250`,
-  iPhone X userland identity, GIC 0x17A00000/0x17A60000 — same as sweet).
+- The shim loads the plain arm64 Darwin 22.6.0 kernel on cas.
+- The UFS driver finds the existing `userdata` partition on LUN 0 and mounts the
+  native, journaled 16 GiB HFSX iOS root image with read/write enabled.
+- Apple launchd starts the real iOS 16.7.16 (20H392) userland. FIPS self-tests pass,
+  keybag and user-manager early setup run, and late exec checkpoints are recorded.
+- Recovery reads the complete console ring from the end of `userdata`; fresh image
+  markers distinguish boots. The process sampler has saved launchd and dirs_cleaner
+  PC/LR/SP and user stack frames.
 
-Not working yet: a hand-made SWEETXNU payload with a 4-byte stub kernel still ends in
-`PANIC SYNC` at `STAGE loader`, right after the `ENTRY` line (i.e. inside the segment
-copy / boot_args placement), at `phys_base` 0x100000000, 0x200000000 and 0xB0000000
-alike. The panic frame and next steps are in `NOTES.md` ("cas port handoff").
+Boot-task output currently stops after the init_featureflags exec checkpoint.
+That checkpoint is before exec completion; the runtime blocker is still under
+investigation. Patch 0092 adds bounded writer heartbeats, sampler wait/iteration
+boundaries, and an option to skip user stack reads. Native compilation and a new
+hardware check of that patch are pending. Input and USB were disabled in these
+root diagnostics; SpringBoard has not been observed on cas.
 
-Everything else needs the kernel: the XNU patch series is still sweet's, the touch
-driver must become ST FTS521 on QUP1 SE5 (`0xA94000`, addr `0x49`, power through TLMM
-GPIO69, pads GPIO12/13 -> qup5), and the iPhone X 16.7.16 IPSW root image is not built.
+Exact source commits, CI runs, image hashes and the next command are recorded in
+`NOTES.md`. Device dumps and downloaded Apple images stay outside git.
 
 ---
 # ios-sweet
@@ -168,8 +172,11 @@ What the less obvious boot-args do:
 | `sweettouch=0`, `sweetkeys=0` | Disable the touch or button driver |
 | `sweetlog=1 ufslogsecs=1` | Enable the persistent console writer; interval is 1..60 seconds, default 10 |
 | `ufslogexec=1` | With patch 0091, request an initial snapshot and wake the writer after dirs_cleaner, xpcroleaccountd and init_featureflags exec markers |
-| `ufslogtrace=1` | With patch 0091, trace the first eight writer cycles through wait, lock, writes and cache sync |
+| `ufslogtrace=1` | Trace writer wait, lock, writes and cache sync; eight cycles with 0091, 32 with 0092 |
 | `sweetsamplefirst=15 sweetsampleinterval=30` | With patch 0091, adjust sampler delays; defaults remain 90/120 seconds |
+| `ufslogheartbeat=5` | With 0092, emit up to 32 heartbeat messages when the period has elapsed on writer wakes; disabled by default |
+| `sweetsampletrace=1` | With 0092, record sampler wait, iteration and selected callback entry/exit boundaries |
+| `sweetsamplestack=0` | With 0092, keep PC/LR/SP while skipping user stack page reads; frame reads remain enabled by default |
 
 The exec hook only signals the existing writer; the writer retains ownership of
 the UFS lock and DMA buffer. A post-write or post-sync trace may appear only in

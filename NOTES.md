@@ -1,3 +1,58 @@
+### 2026-11-08 — r14: sampler frames resolved; bounded progress diagnostics ready for CI
+
+Fresh sweetlog-sample1s-7c387826904e4917975950cec14d2edb was collected at
+2026-11-08T11:16:37Z. The raw 4198400-byte area matches its receipt SHA256
+edfba99b7a2ecd4047ae0d96a3f67f288a4ad79096530f8f43b350d2560f1ea8;
+v1 total 38103, sequence 11, marker sweetlogid=eb295a6091ab4921.
+Raw-derived text matches the saved console; unused padding is zero.
+Initial tsleep returned 35 (EWOULDBLOCK after timeout). Samples 0 and 1
+contain real thread frames; no sample 2 is saved. Initial sampler wait
+failure is now ruled out for this boot. Sample 1 lacks an iteration-return
+marker, so its later interval may not have been scheduled at all.
+
+Read-only HFSX/cache inspection of the pinned pristine r13 rootfs resolved
+the sampled PCs: launchd waits in wait4, workq_kernreturn, sigsuspend and,
+in sample 0, nanosleep. dirs_cleaner's sample 1 PC is in dyld's
+lsl::PersistentAllocator constructor. Its later dc_reset messages and the
+following execs show that this sampled loader state was not the final stop.
+There are no init_featureflags frames; its exec marker remains inside
+signature/platform checks before exec completion. Symbols are reference
+bytes from the pristine image, not a new live userdata dump. Evidence:
+progress-fixtures/sample1s-symbols.json and inspect_cache.py.
+
+Patch 0092-sweet-sampler-progress-heartbeat.patch, SHA256
+b35782800f8d55a2ef2629eefd9f866541f55e30188e8b2151d65e3b46687df9,
+adds optional sweetsampletrace=1 wait/iteration/callback boundaries and
+sweetsamplestack=0 PC/LR/SP snapshots without vm_map_read_user frame reads.
+ufslogheartbeat=1..60 emits at most 32 messages on existing writer wakes,
+before the unchanged-console skip and outside the UFS lock. It is off by
+default. Writer phase traces are now capped at 32 cycles. Existing storage,
+header/sequence/sync/error paths and the default sampler task body are
+preserved. The heartbeat is independent of sampler traversal, but depends
+on writer wakeups; it is not an independent hardware timer. Disabled frame
+reads still retain existing task/region locks and transition waits.
+
+Exact source inputs were extracted from the accepted 42294101668 buildtree
+(source a8ebc120). Patch apply/reverse/LF replay and source comparison passed;
+quiet-writer models verify period/cap, disabled/invalid settings, and that
+extra exec wakes do not accelerate the heartbeat. A wrong-order calibration
+detects loss of quiet snapshots. All 92 patch names/formats validate. Static
+review passed, including the kernel declaration in mach/mach_time.h.
+Evidence: progress-fixtures/accepted-source-manifest.json, check-result.json
+and review.json. This is not native compilation or a hardware result.
+
+Next source is on proshivka/r14-progress-diag-20261108. The prepared
+progress-fixtures/launch_ci.py pins that commit and patch, checks account
+proshivka before remote writes, publishes only the exact source and reuses
+or dispatches its xnu.yml build once. launch-ci-command.txt watches and saves
+final status, artifact metadata and the complete log. GitHub remains
+unavailable from the local sandbox, so the user runs it from PowerShell.
+After native success, verify artifacts and all three compiled TUs before
+packing a fresh diagnostic with ufslogheartbeat=5 sweetsampletrace=1
+sweetsamplestack=0 and existing sampler timing 1/5. No new boot image has
+been assembled or sent to the device yet; current hardware evidence still
+belongs to a8ebc120 / run 42294101668 and image 5fd1d275...e18303.
+
 ### 2026-11-08 — r14: earlier sampler boot accepted; recovery collection command copied
 
 manual-boot-r14-sample1s.json records bootloader acceptance at
